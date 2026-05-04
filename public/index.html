@@ -1,0 +1,1864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dynamic scheduler</title>
+<style>
+/* ── design tokens ───────────────────────────────────────────── */
+:root{
+  --bg:#F8F5F0;
+  --surface:#FAF7F2;
+  --surface-2:#EEEAE3;
+  --border:#E7E5E4;
+  --text:#334155;
+  --text-2:#64748B;
+  --text-3:#94a3b8;
+  --accent:#5B7C99;
+  --accent-hover:#4A6B86;
+  --accent-bg:#F1F5F9;
+  --accent-ring:#BFCDD9;
+  --green:#10b981;
+  --green-bg:#ecfdf5;
+  --red:#ef4444;
+  --red-bg:#fef2f2;
+  --shadow-sm:0 1px 4px rgba(0,0,0,.05),0 1px 2px rgba(0,0,0,.03);
+  --shadow:0 4px 12px rgba(0,0,0,.05),0 2px 4px rgba(0,0,0,.04);
+  --r:10px;
+  --r-sm:6px;
+}
+
+/* ── reset & base ────────────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:var(--text);background:var(--bg);font-size:14px;line-height:1.5}
+.app{max-width:700px;margin:0 auto;padding:28px 20px}
+
+/* ── app header ──────────────────────────────────────────────── */
+.app-header{margin-bottom:28px}
+.app-title{font-size:22px;font-weight:800;color:var(--text);letter-spacing:-.03em;line-height:1.1}
+.app-tagline{font-size:12px;color:var(--text-3);margin-top:3px;font-weight:400}
+.app-date{font-size:12px;color:var(--text-3);margin-top:2px}
+
+/* ── nav ─────────────────────────────────────────────────────── */
+.nav{display:flex;gap:3px;margin-bottom:28px;background:var(--surface-2);border-radius:var(--r);padding:4px}
+.nav button{flex:1;padding:8px 6px;border-radius:var(--r-sm);border:none;background:transparent;color:var(--text-2);cursor:pointer;font-size:12px;font-weight:500;transition:background .15s,color .15s,box-shadow .15s;white-space:nowrap}
+.nav button.active{background:var(--surface);color:var(--accent);box-shadow:var(--shadow-sm);font-weight:600}
+.nav button:hover:not(.active){background:rgba(255,255,255,.6);color:var(--text)}
+.nav button.plan-tab{background:var(--accent-bg);color:var(--accent);font-weight:600;box-shadow:0 0 0 1px rgba(91,124,153,.18),var(--shadow-sm)}
+.nav button.plan-tab.active{background:var(--accent-bg);color:var(--accent-hover);font-weight:700;box-shadow:0 0 0 1px var(--accent-ring),var(--shadow-sm)}
+.nav button.plan-tab:hover:not(.active){background:#E2EBF2;color:var(--accent-hover)}
+.nav-badge{display:inline-block;background:var(--red);color:#fff;font-size:10px;font-weight:700;padding:1px 5px;border-radius:10px;margin-left:4px;vertical-align:middle;line-height:1.4}
+
+.screen{display:none}.screen.active{display:block}
+
+/* ── next-action banner ──────────────────────────────────────── */
+.next-action{border-radius:var(--r);padding:18px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.next-action.nudge{background:var(--accent-bg);box-shadow:0 0 0 1.5px var(--accent),var(--shadow-sm)}
+.next-action.urgent{background:var(--red-bg);box-shadow:0 0 0 1.5px var(--red),var(--shadow-sm)}
+.next-action.success{background:var(--green-bg);box-shadow:0 0 0 1.5px var(--green),var(--shadow-sm)}
+.na-title{font-size:13px;font-weight:700;margin-bottom:2px}
+.na-sub{font-size:12px;color:var(--text-2)}
+
+/* ── card ────────────────────────────────────────────────────── */
+.card{background:var(--surface);border-radius:var(--r);padding:20px 24px;margin-bottom:16px;box-shadow:var(--shadow-sm)}
+
+/* ── area badges ─────────────────────────────────────────────── */
+.area-kid{background:#fce7f3;color:#9d174d;display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.area-home{background:#fef3c7;color:#92400e;display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.area-self{background:#d1fae5;color:#065f46;display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.area-work{background:#ede9fe;color:#4c1d95;display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+
+/* ── section label ───────────────────────────────────────────── */
+.sec{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px}
+
+/* ── stat grid ───────────────────────────────────────────────── */
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+.stat-card{background:var(--surface);border-radius:var(--r);padding:16px;box-shadow:var(--shadow-sm);cursor:pointer;transition:box-shadow .15s,background .15s}
+.stat-card:hover{box-shadow:var(--shadow)}
+.stat-label{font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.stat-val{font-size:28px;font-weight:700;line-height:1}
+.filter-indicator{display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:12px;color:var(--text-2)}
+.filter-clear{font-size:11px;padding:3px 9px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:transparent;color:var(--text-3);cursor:pointer;transition:border-color .15s,color .15s}
+.filter-clear:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── week grid ───────────────────────────────────────────────── */
+.week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:24px}
+.week-grid-sm{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.week-grid-sm .day-col{min-height:52px;padding:6px 4px}
+.day-col{background:var(--surface);border-radius:var(--r-sm);padding:8px 6px;min-height:76px;box-shadow:var(--shadow-sm)}
+.day-lbl{font-size:10px;font-weight:700;color:var(--text-3);text-align:center;margin-bottom:6px;text-transform:uppercase;letter-spacing:.04em}
+.today-col{background:var(--accent-bg);box-shadow:0 0 0 1.5px var(--accent),var(--shadow-sm)}
+.today-col .day-lbl{color:var(--accent)}
+.day-pill{font-size:10px;padding:2px 4px;border-radius:3px;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ── task rows (dashboard) ───────────────────────────────────── */
+.task-row{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.task-row:last-child{border-bottom:none}
+.task-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}
+.task-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.rm-btn{font-size:11px;padding:4px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:transparent;color:var(--text-3);cursor:pointer;transition:border-color .15s,color .15s;flex-shrink:0}
+.rm-btn:hover{border-color:var(--red);color:var(--red)}
+.edit-btn{font-size:11px;padding:4px 10px;border:1.5px solid var(--border);border-radius:var(--r-sm);background:transparent;color:var(--text-3);cursor:pointer;transition:border-color .15s,color .15s;flex-shrink:0}
+.edit-btn:hover{border-color:var(--accent);color:var(--accent)}
+.task-row.editing{background:var(--surface-2);border-radius:var(--r-sm);padding:10px 12px;border-bottom:none !important;margin-bottom:4px}
+.edit-fields{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.edit-fields select,.edit-fields input[type=date]{flex:1;min-width:80px;font-size:12px}
+
+/* ── chips ───────────────────────────────────────────────────── */
+.chip{font-size:11px;padding:4px 12px;border-radius:20px;border:1.5px solid var(--border);background:transparent;color:var(--text-2);cursor:pointer;user-select:none;display:inline-block;transition:all .15s}
+.chip.sel{border-color:var(--accent);color:var(--accent);background:var(--accent-bg);font-weight:600}
+.chip:hover:not(.sel){border-color:var(--text-3);color:var(--text)}
+
+/* ── mood buttons ────────────────────────────────────────────── */
+.mood-btn{font-size:12px;padding:8px 14px;border-radius:var(--r-sm);border:1.5px solid var(--border);background:var(--surface);color:var(--text-2);cursor:pointer;margin-right:8px;margin-bottom:8px;display:inline-block;font-weight:500;transition:all .15s;text-align:center;vertical-align:top}
+.mood-btn.sel{background:var(--accent-bg);border-color:var(--accent);color:var(--accent);font-weight:600}
+.mood-btn:hover:not(.sel){border-color:var(--text-3);color:var(--text)}
+.mood-sub{font-size:10px;font-weight:400;opacity:.6;line-height:1.3;display:block;margin-top:2px}
+
+/* ── buttons ─────────────────────────────────────────────────── */
+.btn{padding:9px 18px;border-radius:var(--r-sm);border:1.5px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:13px;font-weight:600;transition:all .15s}
+.btn:hover{border-color:var(--text-3)}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 2px 6px rgba(91,124,153,.2)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover);box-shadow:0 2px 8px rgba(91,124,153,.25)}
+.btn-sm{padding:6px 14px;font-size:12px}
+.btn-danger{border-color:#fca5a5;color:var(--red)}
+.btn-danger:hover{background:var(--red-bg);border-color:var(--red)}
+
+/* ── form elements ───────────────────────────────────────────── */
+textarea,input,select{border:1.5px solid var(--border);border-radius:var(--r-sm);padding:8px 12px;font-family:inherit;font-size:13px;color:var(--text);background:var(--surface);width:100%;transition:border-color .15s,box-shadow .15s}
+textarea{resize:vertical;line-height:1.5}
+textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(91,124,153,.12)}
+
+/* ── field labels ────────────────────────────────────────────── */
+.field-label{font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:6px}
+.field-opt{font-weight:400;color:var(--text-3)}
+
+/* ── feedback messages ───────────────────────────────────────── */
+.err{font-size:12px;color:var(--red);padding:8px 12px;background:var(--red-bg);border-radius:var(--r-sm);margin-top:10px;font-weight:500}
+.ok{font-size:12px;color:var(--green);margin-top:8px;font-weight:500}
+.hint{font-size:11px;color:var(--text-3);margin-top:8px;line-height:1.6}
+.empty{text-align:center;padding:40px;color:var(--text-3);font-size:13px}
+
+/* ── session log ─────────────────────────────────────────────── */
+.log-item{font-size:12px;padding:12px 0;border-bottom:1px solid var(--border);line-height:1.6}
+.log-item:last-child{border-bottom:none}
+
+/* ── parse preview items ─────────────────────────────────────── */
+.parse-item{background:var(--surface-2);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:8px;display:flex;align-items:flex-start;gap:10px}
+.parse-item-rm{border:none;background:none;color:var(--text-3);cursor:pointer;font-size:18px;padding:0 4px;line-height:1;transition:color .15s}
+.parse-item-rm:hover{color:var(--red)}
+.parse-estmin{width:46px;font-size:11px;padding:2px 5px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--text);text-align:right;-moz-appearance:textfield;appearance:textfield}
+.parse-estmin::-webkit-outer-spin-button,.parse-estmin::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+/* ── session task cards ──────────────────────────────────────── */
+.stask{border-radius:var(--r);padding:14px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:flex-start;gap:14px;background:var(--surface);box-shadow:var(--shadow-sm);transition:box-shadow .15s}
+.stask.next{box-shadow:0 0 0 2px var(--accent),var(--shadow)}
+.stask.done{background:var(--green-bg);box-shadow:none}
+.stask.skipped{background:var(--surface-2);box-shadow:none;opacity:.65}
+.stask-body{flex:1;min-width:0}
+.next-up-label{font-size:10px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em;margin-bottom:5px}
+.stask-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px}
+.stask-title.struck{text-decoration:line-through;color:var(--text-3)}
+.stask-btn{flex-shrink:0;padding:8px 16px;border-radius:var(--r-sm);border:none;font-size:12px;font-weight:700;cursor:pointer;color:#fff;min-width:108px;text-align:center;transition:opacity .15s}
+.stask-btn:hover{opacity:.85}
+.stask-btn.open{background:var(--accent)}
+.stask-btn.done{background:var(--green)}
+.stask-btn.skipped{background:var(--text-3)}
+
+/* ── progress bar ────────────────────────────────────────────── */
+.progress-wrap{height:6px;border-radius:3px;background:var(--surface-2);margin:10px 0 6px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;background:var(--green);transition:width .3s ease}
+
+/* ── wins card ───────────────────────────────────────────────── */
+.wins-card{background:var(--green-bg);border-radius:var(--r);padding:16px 20px;margin-bottom:16px;box-shadow:var(--shadow-sm)}
+
+/* ── misc ────────────────────────────────────────────────────── */
+.divider{height:1px;background:var(--border);margin:20px 0}
+.prefs-hint{font-size:12px;color:var(--text-3);margin-bottom:14px;line-height:1.7}
+.plan-context{font-size:12px;color:var(--text-3);margin-bottom:14px}
+.more-opts-btn{font-size:12px;color:var(--accent);background:none;border:none;cursor:pointer;padding:6px 0 2px;font-weight:500}
+.more-opts{display:none;margin-top:10px}
+.more-opts.open{display:block}
+
+/* ── toast ───────────────────────────────────────────────────── */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;font-size:13px;padding:12px 18px;border-radius:var(--r);box-shadow:var(--shadow);display:flex;align-items:center;gap:14px;z-index:9999;transition:opacity .25s;max-width:440px;white-space:nowrap}
+#toast.hidden{opacity:0;pointer-events:none}
+.toast-undo{background:none;border:1.5px solid rgba(255,255,255,.35);color:#fff;font-size:12px;font-weight:600;padding:4px 10px;border-radius:var(--r-sm);cursor:pointer;flex-shrink:0}
+.toast-undo:hover{background:rgba(255,255,255,.1)}
+
+/* ── defer actions ───────────────────────────────────────────── */
+.defer-btns{margin-top:7px;display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.defer-btn{font-size:11px;color:var(--text-3);cursor:pointer;padding:2px 5px;border-radius:3px;transition:color .12s,background .12s;user-select:none}
+.defer-btn:hover{color:var(--accent);background:var(--accent-bg)}
+.defer-sep{font-size:11px;color:var(--border);margin:0 1px;user-select:none}
+.reschedule-form{margin-top:8px;display:none;align-items:center;gap:6px}
+.reschedule-form input{width:140px;font-size:12px;padding:5px 8px}
+
+/* ── deferred label ──────────────────────────────────────────── */
+.deferred-label{font-size:11px;color:var(--text-3);font-style:italic}
+
+/* ── adjust plan panel ───────────────────────────────────────── */
+.adjust-panel{background:var(--surface-2);border-radius:var(--r);padding:18px 20px;margin-bottom:16px;border:1.5px solid var(--border)}
+.adjust-panel-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px}
+.adjust-quick{font-size:12px;padding:6px 12px;border-radius:var(--r-sm);border:1.5px solid var(--border);background:var(--surface);color:var(--text-2);cursor:pointer;font-weight:500;transition:all .15s;margin-right:6px;margin-bottom:6px;display:inline-block}
+.adjust-quick:hover,.adjust-quick.sel{border-color:var(--accent);color:var(--accent);background:var(--accent-bg)}
+.adjust-energy-btn{font-size:12px;padding:6px 14px;border-radius:var(--r-sm);border:1.5px solid var(--border);background:var(--surface);color:var(--text-2);cursor:pointer;font-weight:500;transition:all .15s;margin-right:6px;margin-bottom:6px;display:inline-block}
+.adjust-energy-btn.sel{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.adjust-energy-btn:hover:not(.sel){border-color:var(--text-3);color:var(--text)}
+.adjust-tag{font-size:11px;padding:3px 8px;border-radius:20px;border:1.5px solid var(--border);background:transparent;color:var(--text-3);cursor:pointer;transition:all .15s;margin-right:5px;margin-bottom:4px;display:inline-block}
+.adjust-tag:hover{border-color:var(--text-2);color:var(--text)}
+.adjust-msg{font-size:13px;padding:12px 16px;background:var(--green-bg);border-radius:var(--r-sm);margin-bottom:14px;font-weight:500;color:#065f46}
+.adjust-msg.neutral{background:var(--surface-2);color:var(--text-2)}
+.adjusted-badge{display:inline-block;font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-bg);padding:2px 7px;border-radius:20px;margin-left:8px;letter-spacing:.04em;vertical-align:middle}
+
+/* ── today view ──────────────────────────────────────────────── */
+.today-hero{background:linear-gradient(150deg,var(--accent-bg) 0%,var(--surface) 55%);border-radius:var(--r);padding:24px 24px 20px;margin-bottom:24px;box-shadow:var(--shadow-sm)}
+.today-hero-title{font-size:26px;font-weight:700;color:var(--text);letter-spacing:-.03em;margin-bottom:6px}
+.today-hero-msg{font-size:13px;color:var(--text-2);margin-bottom:20px;line-height:1.6;max-width:480px}
+.today-hero-actions{display:flex;gap:10px;flex-wrap:wrap}
+.today-section{margin-bottom:28px}
+.focus-task{border-radius:var(--r);padding:13px 16px;margin-bottom:8px;background:var(--surface);box-shadow:var(--shadow-sm)}
+.focus-task.urgent{background:var(--red-bg);box-shadow:0 0 0 1px #fecaca,var(--shadow-sm)}
+.focus-task-title{font-size:13px;font-weight:600;color:var(--text);margin-bottom:5px}
+.at-risk-empty{font-size:12px;color:#065f46;padding:10px 14px;background:var(--green-bg);border-radius:var(--r-sm);font-weight:500}
+.today-done-item{font-size:12px;color:#065f46;padding:5px 0;border-bottom:1px solid #d1fae5;display:flex;align-items:center;gap:8px}
+.today-done-item:last-child{border-bottom:none}
+.today-empty-note{font-size:12px;color:var(--text-3);padding:6px 0}
+
+/* ── today focus explanation ─────────────────────────────────── */
+.today-focus-sub{font-size:11px;color:var(--text-3);margin-bottom:8px;line-height:1.5}
+.today-focus-info-btn{font-size:11px;color:var(--text-3);background:none;border:none;cursor:pointer;padding:0;margin-bottom:10px;font-family:inherit;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px}
+.today-focus-info-btn:hover{color:var(--text-2)}
+.today-focus-info{background:var(--surface-2);border-radius:var(--r-sm);padding:10px 14px;margin-bottom:10px;font-size:12px;color:var(--text-2);line-height:1.7}
+.today-focus-info-list{margin:5px 0 6px;padding-left:16px}
+.today-focus-info-list li{margin-bottom:2px}
+.today-focus-info-close{font-size:11px;color:var(--text-3);margin-top:5px;font-style:italic;line-height:1.5}
+.today-focus-footer{font-size:11px;color:var(--text-3);margin-top:12px;line-height:1.5}
+.today-focus-link{background:none;border:none;cursor:pointer;color:var(--accent);font-size:11px;font-family:inherit;padding:0;font-weight:600}
+.today-focus-link:hover{text-decoration:underline}
+
+/* ── how plan / why plan ─────────────────────────────────────── */
+.how-plan{background:var(--surface-2);border-radius:var(--r-sm);margin-bottom:16px;overflow:hidden}
+.how-plan-toggle{display:flex;align-items:center;justify-content:space-between;width:100%;padding:10px 14px;background:none;border:none;cursor:pointer;font-size:12px;color:var(--text-2);font-weight:600;font-family:inherit;text-align:left}
+.how-plan-toggle:hover{color:var(--text)}
+.how-plan-icon{font-size:10px;transition:transform .2s;color:var(--text-3);line-height:1;flex-shrink:0}
+.how-plan-icon.open{transform:rotate(180deg)}
+.how-plan-body{padding:0 14px 12px;font-size:12px;color:var(--text-2);line-height:1.7}
+.how-plan-list{margin:5px 0 8px;padding-left:16px}
+.how-plan-list li{margin-bottom:2px}
+.how-plan-close{font-size:11px;color:var(--text-3);margin-top:6px;line-height:1.6;font-style:italic}
+.why-plan{background:var(--surface-2);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--text-2);line-height:1.75}
+.why-plan-title{font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px}
+.why-plan-line{padding:1px 0}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="app-header">
+  <div class="app-title">Next Block</div>
+  <div class="app-tagline">A clear plan for your next block of time.</div>
+  <div class="app-date" id="header-date"></div>
+</div>
+
+<div class="nav">
+  <button class="active plan-tab" onclick="goTo('planner',this)">Plan Block<span id="nav-urgent-badge" class="nav-badge" style="display:none"></span></button>
+  <button onclick="goTo('dashboard',this)">Overview</button>
+  <button onclick="goTo('today',this)">Today</button>
+  <button onclick="goTo('capture',this)">Add Tasks</button>
+  <button onclick="goTo('prefs',this)">Preferences</button>
+</div>
+
+<!-- OVERVIEW -->
+<div id="screen-dashboard" class="screen">
+  <div id="next-action-banner" style="display:none"></div>
+  <div id="wins-wrap" style="display:none"></div>
+  <div class="stat-grid" id="stat-grid"></div>
+  <div class="sec">Deadlines this week</div>
+  <div class="week-grid" id="week-grid"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div class="sec" style="margin-bottom:0">Open tasks</div>
+    <select id="filter-area" style="width:auto;font-size:12px;padding:4px 10px" onchange="renderDashboard()">
+      <option value="">All areas</option>
+      <option value="kid">Family</option><option value="work">Work</option>
+      <option value="self">Self</option><option value="home">Home</option>
+    </select>
+  </div>
+  <div id="filter-indicator"></div>
+  <div id="task-list"></div>
+</div>
+
+<!-- TODAY -->
+<div id="screen-today" class="screen">
+  <div class="today-hero" id="today-hero"></div>
+
+  <div class="today-section">
+    <div class="sec" style="margin-bottom:3px">Today's focus</div>
+    <div class="today-focus-sub">This highlights what may matter today — not a plan.</div>
+    <button class="today-focus-info-btn" onclick="toggleFocusInfo()">How this works</button>
+    <div id="focus-info-body" style="display:none" class="today-focus-info">
+      <div>What you see here is based on:</div>
+      <ul class="today-focus-info-list">
+        <li>Tasks due today or overdue</li>
+        <li>Tasks that are time-sensitive or at risk</li>
+        <li>Tasks you often complete on similar days</li>
+        <li>Tasks that could realistically fit today</li>
+      </ul>
+      <div class="today-focus-info-close">This is meant to help you stay aware — your block plan will decide what to do next.</div>
+    </div>
+    <div id="today-focus"></div>
+    <div class="today-focus-footer">Use <button class="today-focus-link" onclick="navGoTo('planner')">Plan Block</button> to decide what to do right now.</div>
+  </div>
+
+  <div class="today-section">
+    <div class="sec">At risk</div>
+    <div id="today-risk"></div>
+  </div>
+
+  <div class="today-section">
+    <div class="sec">Completed today</div>
+    <div id="today-done"></div>
+  </div>
+
+  <div class="today-section" id="today-session-wrap" style="display:none">
+    <div class="sec">Last session</div>
+    <div id="today-session"></div>
+  </div>
+</div>
+
+<!-- ADD TASKS -->
+<div id="screen-capture" class="screen">
+
+  <div class="card">
+    <div class="sec" style="margin-bottom:8px">Add tasks from notes</div>
+    <p style="font-size:13px;color:var(--text-2);margin-bottom:12px;line-height:1.5">Paste messy notes, reminders, or tasks. We'll turn them into structured tasks with category, priority, deadline, and estimated time when available.</p>
+    <textarea id="raw-notes" rows="6"
+      placeholder="Write anything — e.g. Call pediatrician this week. Fix leaking tap asap. Deep work on Q2 report due Friday. Go for a run."></textarea>
+    <button class="btn btn-primary btn-sm" id="parse-btn" style="margin-top:12px">Parse with AI</button>
+    <div id="parse-err" style="display:none" class="err"></div>
+    <p class="hint">Include time estimates like "10 min", "about 30 minutes", or "1 hour" and we'll preserve them.</p>
+  </div>
+
+  <div id="parse-review" style="display:none;margin-bottom:16px">
+    <div class="sec">Review — then save</div>
+    <div id="parse-result"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-primary btn-sm" onclick="confirmTasks()">Save all tasks</button>
+      <button class="btn btn-sm" onclick="clearParse()">Clear</button>
+    </div>
+    <div id="confirm-msg" style="display:none" class="ok"></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="card">
+    <div class="sec" style="margin-bottom:12px">Quick add</div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <input type="text" id="quick-title" placeholder="Task title" onkeydown="if(event.key==='Enter')quickAdd()" style="flex:1">
+      <button class="btn btn-primary btn-sm" onclick="quickAdd()">Add</button>
+    </div>
+    <div style="margin-bottom:4px">
+      <div class="field-label">Area</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <span class="chip sel" data-g="area" data-v="kid" onclick="pickChip(this)">Family</span>
+        <span class="chip" data-g="area" data-v="work" onclick="pickChip(this)">Work</span>
+        <span class="chip" data-g="area" data-v="self" onclick="pickChip(this)">Self</span>
+        <span class="chip" data-g="area" data-v="home" onclick="pickChip(this)">Home</span>
+      </div>
+    </div>
+    <button class="more-opts-btn" onclick="toggleMoreOpts(this)">More options ▾</button>
+    <div class="more-opts" id="quick-more-opts">
+      <div style="display:flex;gap:20px;flex-wrap:wrap">
+        <div>
+          <div class="field-label">Priority</div>
+          <div style="display:flex;gap:6px">
+            <span class="chip" data-g="pri" data-v="high" onclick="pickChip(this)">High</span>
+            <span class="chip sel" data-g="pri" data-v="med" onclick="pickChip(this)">Med</span>
+            <span class="chip" data-g="pri" data-v="low" onclick="pickChip(this)">Low</span>
+          </div>
+        </div>
+        <div>
+          <div class="field-label">Energy</div>
+          <div style="display:flex;gap:6px">
+            <span class="chip" data-g="eng" data-v="deep" onclick="pickChip(this)">Deep</span>
+            <span class="chip sel" data-g="eng" data-v="light" onclick="pickChip(this)">Light</span>
+            <span class="chip" data-g="eng" data-v="errand" onclick="pickChip(this)">Errand</span>
+          </div>
+        </div>
+        <div>
+          <div class="field-label">Deadline <span class="field-opt">(optional)</span></div>
+          <input type="date" id="quick-deadline" style="width:150px;font-size:12px;padding:5px 8px">
+        </div>
+      </div>
+    </div>
+    <div id="quick-err" style="display:none" class="err"></div>
+    <div id="quick-ok" style="display:none" class="ok"></div>
+  </div>
+</div>
+
+<!-- PLAN BLOCK -->
+<div id="screen-planner" class="screen active">
+  <div class="card">
+    <div class="sec" style="margin-bottom:14px">Block settings</div>
+    <div style="margin-bottom:16px">
+      <div class="field-label">How are you feeling?</div>
+      <div id="mood-row">
+        <button class="mood-btn sel" data-val="default">Default<span class="mood-sub">Balanced plan</span></button>
+        <button class="mood-btn" data-val="focused">Focused<span class="mood-sub">I can dive into deep work</span></button>
+        <button class="mood-btn" data-val="low-energy">Low Energy<span class="mood-sub">I'm tired</span></button>
+        <button class="mood-btn" data-val="hard-to-focus">Hard to focus<span class="mood-sub">I need small, clear tasks</span></button>
+      </div>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+      <div style="flex:1;min-width:120px">
+        <div class="field-label">Available time (min)</div>
+        <input type="number" id="slot-min" value="90" min="15" max="480" step="15">
+      </div>
+      <div style="flex:1;min-width:120px">
+        <div class="field-label">Time of day</div>
+        <select id="slot-tod">
+          <option value="morning">Morning</option>
+          <option value="afternoon">Afternoon</option>
+          <option value="evening">Evening</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:16px">
+      <div class="field-label">Anything on your mind right now? <span class="field-opt">(optional)</span></div>
+      <textarea id="realtime-input" rows="2"
+        placeholder="e.g. Want to only tackle work related tasks. Need to make a call at 2pm."
+        style="font-size:12px;resize:none"></textarea>
+    </div>
+    <div class="how-plan">
+      <button class="how-plan-toggle" onclick="toggleHowPlan()">
+        <span>How your block is planned</span>
+        <span class="how-plan-icon" id="how-plan-icon">▾</span>
+      </button>
+      <div id="how-plan-body" style="display:none">
+        <div class="how-plan-body">
+          <div>This learning system builds a realistic plan for this block by looking at:</div>
+          <ul class="how-plan-list">
+            <li>Your open tasks</li>
+            <li>What's due soon or at risk</li>
+            <li>How much time you have</li>
+            <li>Your current energy and focus</li>
+            <li>Your preferences, real-time inputs and scheduling rules</li>
+            <li>What has worked for you before</li>
+          </ul>
+          <div class="how-plan-close">The goal is not to fill every minute — it's to give you a clear next step.</div>
+        </div>
+      </div>
+    </div>
+    <div id="plan-context" class="plan-context"></div>
+    <button class="btn btn-primary" id="gen-plan-btn" style="padding:11px 24px;font-size:14px">Plan this block</button>
+    <div id="plan-err" style="display:none" class="err"></div>
+  </div>
+
+  <!-- ACTIVE SESSION -->
+  <div id="session-wrap" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div>
+        <div class="sec" style="margin-bottom:2px">Active block<span id="adjusted-badge" style="display:none" class="adjusted-badge">adjusted</span></div>
+        <div id="block-time-label" style="display:none;font-size:11px;color:var(--text-3)"></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" id="adjust-btn" onclick="openAdjustPlanModal()">Adjust plan</button>
+        <button class="btn btn-sm" id="finish-btn">Finish block</button>
+      </div>
+    </div>
+    <div id="adjust-msg" style="display:none" class="adjust-msg"></div>
+    <!-- ADJUST PANEL -->
+    <div id="adjust-panel" style="display:none" class="adjust-panel">
+      <div class="adjust-panel-title">Adjust this block</div>
+      <div style="margin-bottom:14px">
+        <div class="field-label">Time available now</div>
+        <div style="margin-bottom:8px">
+          <span class="adjust-quick" onclick="setAdjustTime(this,10)">10 min</span>
+          <span class="adjust-quick" onclick="setAdjustTime(this,20)">20 min</span>
+          <span class="adjust-quick" onclick="setAdjustTime(this,30)">30 min</span>
+          <span class="adjust-quick" onclick="setAdjustTime(this,45)">45 min</span>
+        </div>
+        <input type="number" id="adjust-minutes" min="5" max="480" step="5" placeholder="or type minutes" style="width:160px">
+      </div>
+      <div style="margin-bottom:14px">
+        <div class="field-label">Energy now</div>
+        <span class="adjust-energy-btn" onclick="selectAdjustEnergy(this)" data-val="focused">Focused</span>
+        <span class="adjust-energy-btn" onclick="selectAdjustEnergy(this)" data-val="default">Default</span>
+        <span class="adjust-energy-btn" onclick="selectAdjustEnergy(this)" data-val="low-energy">Low Energy</span>
+        <span class="adjust-energy-btn" onclick="selectAdjustEnergy(this)" data-val="hard-to-focus">Hard to focus</span>
+      </div>
+      <div style="margin-bottom:16px">
+        <div class="field-label">What changed? <span class="field-opt">(optional)</span></div>
+        <div style="margin-bottom:6px">
+          <span class="adjust-tag" onclick="appendAdjustReason('Low energy')">Low energy</span>
+          <span class="adjust-tag" onclick="appendAdjustReason('Got interrupted')">Interrupted</span>
+          <span class="adjust-tag" onclick="appendAdjustReason('Running out of time')">Running out of time</span>
+        </div>
+        <textarea id="adjust-reason" rows="2" placeholder="e.g. Baby woke up, only have 15 min now..." style="font-size:12px;resize:none"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn btn-primary btn-sm" id="adjust-submit-btn" onclick="adjustCurrentPlan()">Adjust block</button>
+        <button class="btn btn-sm" onclick="closeAdjustPlanModal()">Never mind</button>
+      </div>
+      <div id="adjust-err" style="display:none" class="err"></div>
+    </div>
+    <div class="progress-wrap"><div class="progress-fill" id="s-progress" style="width:0%"></div></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div id="s-label" style="font-size:11px;color:#94a3b8">0 of 0 done</div>
+      <div id="s-time-label" style="font-size:11px;color:#94a3b8"></div>
+    </div>
+    <div id="why-plan-card" style="display:none" class="why-plan"></div>
+    <div id="session-tasks"></div>
+  </div>
+
+  <!-- BLOCK LOG -->
+  <div style="margin-top:28px">
+    <div class="sec" style="margin-bottom:12px">Completed blocks</div>
+    <div id="log-list"></div>
+  </div>
+</div>
+
+<!-- PREFS -->
+<div id="screen-prefs" class="screen">
+  <div class="card">
+    <div class="sec" style="margin-bottom:10px">Scheduling Preferences</div>
+    <p class="prefs-hint">
+      Write plain-language rules. These are passed directly to Claude when generating your plan.<br><br>
+      Examples:<br>
+      • Deep work only before 9am<br>
+      • Family tasks must be done before 3pm school pickup<br>
+      • Evenings are for light tasks only<br>
+      • Never schedule more than 2 work tasks in one session
+    </p>
+    <textarea id="prefs-inst" rows="8" placeholder="Write your scheduling rules here..."></textarea>
+    <button class="btn btn-primary btn-sm" id="save-inst-btn" style="margin-top:12px">Save</button>
+    <div id="inst-msg" style="display:none" class="ok"></div>
+  </div>
+  <div class="card">
+    <div class="sec" style="margin-bottom:14px">Danger zone</div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div>
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">Delete task list</div>
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:10px">Removes all open and completed tasks. Keeps your planning history and preferences.</div>
+        <button class="btn btn-danger btn-sm" id="clear-tasks-btn">Delete task list</button>
+      </div>
+      <div style="padding-top:14px;border-top:1px solid var(--border)">
+        <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:3px">Reset learning system</div>
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:10px">Removes tasks, planning history, session logs, and preferences stored in this browser.</div>
+        <button class="btn btn-danger btn-sm" id="clear-all-btn" style="border-color:var(--red);color:var(--red);background:var(--red-bg)">Reset everything</button>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text-3);margin-top:16px">These changes only affect data stored in this browser.</div>
+    <div id="clear-msg" style="display:none" class="ok"></div>
+  </div>
+</div>
+
+</div>
+<div id="toast" class="hidden"></div>
+
+<script>
+const AREAS=['kid','work','self','home'];
+const AREA_BG={kid:'#fce7f3',home:'#fef3c7',self:'#d1fae5',work:'#ede9fe'};
+const AREA_FG={kid:'#9d174d',home:'#92400e',self:'#065f46',work:'#4c1d95'};
+function areaLabel(a){return a==='kid'?'Family':a[0].toUpperCase()+a.slice(1);}
+const DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const DEBUG_PARSE=true;
+let parsedBuf=[], sessionPlan=[], sessionDeferred=[], editingTaskId=null;
+let sessionAdjusted=false, sessionAdjustmentTs=null, sessionAdjustmentReason=null;
+let sessionOriginalMinutes=null, sessionAdjustedMinutes=null;
+let sessionBlockStart=null, sessionBlockEnd=null, sessionBlockMinutes=null;
+let qSel={area:'kid',pri:'med',eng:'light'};
+
+// ── storage ──────────────────────────────────────────────────
+function lsGet(k){try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+function loadTasks(){return lsGet('sched_tasks')||[];}
+function saveTasks(t){lsSet('sched_tasks',t);}
+function loadPrefs(){return lsGet('sched_prefs')||{instructions:''};}
+function savePrefs(p){lsSet('sched_prefs',p);}
+function saveLog(l){lsSet('sched_log',l);}
+function normalizeMood(m){
+  if(!m)return'default';
+  const map={good:'default','in the zone':'focused',tired:'low-energy','low energy':'low-energy',scattered:'hard-to-focus'};
+  return map[m.toLowerCase()]||m;
+}
+function moodDisplay(m){
+  const map={default:'',focused:'Focused','low-energy':'Low Energy','hard-to-focus':'Hard to focus'};
+  return map[m]||m;
+}
+function normalizeLog(s){
+  let base=s;
+  if(!s.tasks){
+    const completedIds=s.completedIds||[];
+    const skippedIds=s.skippedIds||[];
+    base={
+      ts:new Date(s.date).getTime(),date:s.date,
+      timeOfDay:s.timeOfDay||'morning',mood:s.mood||'default',
+      minutesPlanned:s.slotMinutes||90,minutesCompleted:null,
+      tasks:[
+        ...completedIds.map(id=>({taskId:id,result:'done'})),
+        ...skippedIds.map(id=>({taskId:id,result:'skipped'}))
+      ],
+      completedIds,skippedIds,slotMinutes:s.slotMinutes||90
+    };
+  }
+  return{...base,mood:normalizeMood(base.mood||'default')};
+}
+function loadLog(){return(lsGet('sched_log')||[]).map(normalizeLog);}
+function appendLog(e){const l=lsGet('sched_log')||[];l.push(e);saveLog(l);}
+
+// ── defer / reschedule ────────────────────────────────────────
+function isDeferred(t){return !!(t.deferredUntil&&new Date(t.deferredUntil)>new Date());}
+
+function deferLabel(t){
+  if(!t.deferredUntil)return '';
+  const until=new Date(t.deferredUntil);
+  if(until<=new Date())return '';
+  const tmr=new Date();tmr.setDate(tmr.getDate()+1);
+  if(until.toDateString()===new Date().toDateString())return 'Deferred until later today';
+  if(until.toDateString()===tmr.toDateString())return 'Deferred until tomorrow';
+  return 'Deferred until '+until.toLocaleDateString('en',{month:'short',day:'numeric'});
+}
+
+function rescheduleTask(taskId,type,customDate){
+  const now=new Date();let until;
+  if(type==='notNow'){until=new Date(now.getTime()+3*3600000);}
+  else if(type==='tomorrow'){until=new Date(now);until.setDate(until.getDate()+1);until.setHours(9,0,0,0);}
+  else if(type==='custom'&&customDate){until=new Date(customDate);until.setHours(9,0,0,0);}
+  saveTasks(loadTasks().map(t=>t.id===taskId?{...t,deferredUntil:until?.toISOString()||null}:t));
+}
+
+let _toastTimer=null;
+function showToast(msg,undoFn){
+  const el=document.getElementById('toast');
+  el.innerHTML=`<span>${msg}</span>${undoFn?'<button class="toast-undo" id="toast-undo">Undo</button>':''}`;
+  el.classList.remove('hidden');
+  if(undoFn)document.getElementById('toast-undo').onclick=()=>{undoFn();el.classList.add('hidden');clearTimeout(_toastTimer);};
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>el.classList.add('hidden'),5000);
+}
+
+// ── utils ────────────────────────────────────────────────────
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+const tod=()=>new Date().toISOString().slice(0,10);
+function daysAway(ds){if(!ds)return null;return Math.ceil((new Date(ds)-new Date())/86400000);}
+function dlLabel(ds){if(!ds)return '';const d=daysAway(ds);if(d<0)return 'overdue';if(d===0)return 'due today';if(d===1)return 'due tomorrow';return 'due '+new Date(ds).toLocaleDateString('en',{month:'short',day:'numeric'});}
+function dlStyle(ds){if(!ds)return '';return daysAway(ds)<=1?'color:#ef4444;font-size:11px;font-weight:600':'color:#f59e0b;font-size:11px;font-weight:500';}
+function areaSpan(a){return `<span class="area-${a}">${areaLabel(a)}</span>`;}
+function showEl(id,txt,isErr){const e=document.getElementById(id);if(!e)return;e.textContent=txt;e.className=isErr?'err':'ok';e.style.display=txt?'block':'none';}
+function isTodayLocal(ts){const d=new Date(ts),n=new Date();return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate();}
+function fmtTime(iso){if(!iso)return'';return new Date(iso).toLocaleTimeString('en',{hour:'numeric',minute:'2-digit'});}
+function formatEstimatedMinutes(m){const n=parseInt(m);if(!n||n<=0)return'';if(n<60)return n+' min';if(n%60===0)return(n/60)+' hr';return n+' min';}
+
+// ── header date ──────────────────────────────────────────────
+document.getElementById('header-date').textContent=new Date().toLocaleDateString('en',{weekday:'long',month:'long',day:'numeric'});
+
+// ── nav helpers ───────────────────────────────────────────────
+function navGoTo(name){
+  const idx={planner:0,dashboard:1,today:2,capture:3,prefs:4}[name];
+  goTo(name,document.querySelectorAll('.nav button')[idx]);
+}
+
+function updateNavBadge(){
+  const urgent=loadTasks().filter(t=>t.status==='open'&&t.deadline&&daysAway(t.deadline)<=0).length;
+  const badge=document.getElementById('nav-urgent-badge');
+  badge.style.display=urgent?'inline-block':'none';
+  if(urgent)badge.textContent=urgent;
+}
+
+function goToPlanner(){navGoTo('planner');}
+function goToCapture(){navGoTo('capture');}
+
+// ── behavioral signal aggregation ────────────────────────────
+function buildLogSignals(logs,taskMap){
+  const areaStats={};       // {area:{done,total}}
+  const taskSkips={};       // {taskId:count}
+  const taskDefers={};      // {taskId:count}
+  const energyDoneByTod={}; // {timeOfDay:{energy:count}}
+  let totalSessions=0,totalCompletionRatio=0;
+
+  logs.forEach(s=>{
+    const slot=s.timeOfDay||'morning';
+    if(!energyDoneByTod[slot])energyDoneByTod[slot]={};
+    let sDone=0,sTotal=0;
+    (s.tasks||[]).forEach(entry=>{
+      const t=taskMap[entry.taskId];if(!t)return;
+      sTotal++;
+      if(!areaStats[t.area])areaStats[t.area]={done:0,total:0};
+      areaStats[t.area].total++;
+      if(entry.result==='done'){
+        areaStats[t.area].done++;sDone++;
+        energyDoneByTod[slot][t.energy]=(energyDoneByTod[slot][t.energy]||0)+1;
+      }else if(entry.result==='skipped'){
+        taskSkips[entry.taskId]=(taskSkips[entry.taskId]||0)+1;
+      }else if(entry.result==='deferred'){
+        taskDefers[entry.taskId]=(taskDefers[entry.taskId]||0)+1;
+      }
+    });
+    if(sTotal>0){totalSessions++;totalCompletionRatio+=sDone/sTotal;}
+  });
+
+  return{
+    areaStats,taskSkips,taskDefers,energyDoneByTod,
+    avgCompletionRatio:totalSessions?totalCompletionRatio/totalSessions:1
+  };
+}
+
+// Derived signal helpers
+function getSkipRate(logs,taskMap,taskId){
+  const sig=buildLogSignals(logs,taskMap);
+  const skips=sig.taskSkips[taskId]||0;
+  const total=(logs.flatMap(s=>s.tasks||[]).filter(e=>e.taskId===taskId)).length;
+  return total?skips/total:0;
+}
+function getCompletionRate(logs,taskMap,area){
+  const sig=buildLogSignals(logs,taskMap);
+  const s=sig.areaStats[area];
+  return s&&s.total?s.done/s.total:null;
+}
+function getPreferredEnergyTypes(logs,taskMap,timeOfDay){
+  const sig=buildLogSignals(logs,taskMap);
+  const byEnergy=sig.energyDoneByTod[timeOfDay]||{};
+  return Object.entries(byEnergy).sort((a,b)=>b[1]-a[1]).map(([e])=>e);
+}
+function getAvgCompletionRatio(logs,taskMap){
+  return buildLogSignals(logs,taskMap).avgCompletionRatio;
+}
+
+// ── today: data helpers ───────────────────────────────────────
+
+function getAtRiskTasks(tasks){
+  return tasks
+    .filter(t=>t.status==='open'&&t.deadline&&daysAway(t.deadline)<=0)
+    .sort((a,b)=>new Date(a.deadline)-new Date(b.deadline));
+}
+
+function getCompletedToday(tasks,logs){
+  const ids=[...new Set(logs.filter(s=>isTodayLocal(s.ts)).flatMap(s=>s.completedIds||[]))];
+  const tm={};tasks.forEach(t=>tm[t.id]=t);
+  return ids.map(id=>tm[id]).filter(Boolean);
+}
+
+// Score open tasks using behavior-derived heuristics from session logs.
+// Returns top 5, sorted descending by score.
+function getTodayFocusTasks(tasks,logs){
+  const open=tasks.filter(t=>t.status==='open'&&!isDeferred(t));
+  if(!open.length)return[];
+
+  const todayDow=new Date().getDay();
+  const currentHour=new Date().getHours();
+  const currentTod=currentHour<12?'morning':currentHour<17?'afternoon':'evening';
+  const cutoff=new Date();cutoff.setDate(cutoff.getDate()-14);
+  const recentLogs=logs.filter(s=>new Date(s.date)>=cutoff);
+
+  const taskMap={};tasks.forEach(t=>taskMap[t.id]=t);
+  const sig=buildLogSignals(recentLogs,taskMap);
+
+  // weekday area completions from completedIds (broader compat)
+  const wdArea={};
+  recentLogs.forEach(s=>{
+    const dow=new Date(s.date).getDay();
+    if(!wdArea[dow])wdArea[dow]={};
+    (s.completedIds||[]).forEach(id=>{
+      const t=taskMap[id];if(!t)return;
+      wdArea[dow][t.area]=(wdArea[dow][t.area]||0)+1;
+    });
+  });
+
+  // energy types completed most at current time of day → preferred order
+  const energyAtTod=sig.energyDoneByTod[currentTod]||{};
+  const todTotalEnergy=Object.values(energyAtTod).reduce((a,b)=>a+b,0);
+
+  const scored=open.map(t=>{
+    let score=0;
+
+    // deadline urgency
+    const da=daysAway(t.deadline);
+    if(da!==null){
+      if(da<0)score+=100;
+      else if(da===0)score+=90;
+      else if(da===1)score+=60;
+      else if(da<=3)score+=40;
+      else if(da<=7)score+=20;
+    }
+
+    // priority weight
+    score+={high:30,med:15,low:5}[t.priority]||0;
+
+    // weekday area pattern
+    const wdCount=(wdArea[todayDow]||{})[t.area]||0;
+    if(wdCount>0)score+=Math.min(25,wdCount*8);
+
+    // area completion rate from rich signals
+    const astat=sig.areaStats[t.area];
+    if(astat&&astat.total>0)score+=Math.round((astat.done/astat.total)*20);
+
+    // energy match to time-of-day based on actual completion history
+    if(todTotalEnergy>0){
+      const energyRate=(energyAtTod[t.energy]||0)/todTotalEnergy;
+      score+=Math.round(energyRate*15);
+    }else{
+      // fallback to rule-based fit when no history
+      if(currentHour<12&&t.energy==='deep')score+=10;
+      else if(currentHour>=12&&currentHour<17&&t.energy==='errand')score+=10;
+      else if(currentHour>=17&&t.energy==='light')score+=10;
+    }
+
+    // prefer lighter tasks when user typically leaves sessions incomplete
+    if(sig.avgCompletionRatio<0.5&&t.energy==='errand')score+=8;
+
+    // recency boost
+    if(t.createdAt){
+      const daysSince=Math.floor((Date.now()-new Date(t.createdAt))/86400000);
+      if(daysSince<=1)score+=10;
+      else if(daysSince<=3)score+=5;
+    }
+
+    // skip penalty
+    score-=(sig.taskSkips[t.id]||0)*10;
+
+    // defer penalty — repeatedly deferred tasks rank lower
+    score-=(sig.taskDefers[t.id]||0)*8;
+
+    return{...t,_score:score};
+  });
+
+  return scored.sort((a,b)=>b._score-a._score).slice(0,5);
+}
+
+// ── today: renderers ──────────────────────────────────────────
+
+function renderTodayHero(open,atRisk,completedToday){
+  let msg,actions;
+  if(!open.length){
+    msg='Nothing on your list yet. Start by adding your tasks.';
+    actions=`<button class="btn btn-primary" onclick="goToCapture()">Add tasks</button>`;
+  } else if(atRisk.length){
+    const parts=[];
+    const overdue=atRisk.filter(t=>daysAway(t.deadline)<0);
+    const dueToday=atRisk.filter(t=>daysAway(t.deadline)===0);
+    if(overdue.length)parts.push(`${overdue.length} overdue`);
+    if(dueToday.length)parts.push(`${dueToday.length} due today`);
+    msg=`A few things need attention — ${parts.join(' and ')}.`;
+    actions=`<button class="btn btn-primary" onclick="goToPlanner()">Plan next block</button><button class="btn btn-sm" onclick="goToCapture()">Add task</button>`;
+  } else if(completedToday.length){
+    msg=`You've already completed ${completedToday.length} task${completedToday.length>1?'s':''} today. Great progress.`;
+    actions=`<button class="btn btn-primary" onclick="goToPlanner()">Plan next block</button><button class="btn btn-sm" onclick="goToCapture()">Add task</button>`;
+  } else {
+    msg=`You're in good shape — plan your next block when ready.`;
+    actions=`<button class="btn btn-primary" onclick="goToPlanner()">Plan next block</button><button class="btn btn-sm" onclick="goToCapture()">Add task</button>`;
+  }
+  document.getElementById('today-hero').innerHTML=
+    `<div class="today-hero-title">Today</div><div class="today-hero-msg">${msg}</div><div class="today-hero-actions">${actions}</div>`;
+}
+
+function renderTodayFocusSection(tasks,logs){
+  const focusTasks=getTodayFocusTasks(tasks,logs);
+  const el=document.getElementById('today-focus');
+  if(!focusTasks.length){
+    el.innerHTML='<div class="today-empty-note">Add tasks to see your focus for today.</div>';return;
+  }
+  el.innerHTML=focusTasks.map(t=>{
+    const urgent=t.deadline&&daysAway(t.deadline)<=0;
+    return `<div class="focus-task${urgent?' urgent':''}">
+      <div class="focus-task-title">${t.title}</div>
+      <div class="task-meta">
+        ${areaSpan(t.area)}
+        <span style="font-size:11px;color:#94a3b8">${t.priority} · ${t.energy}</span>
+        ${t.deadline?`<span style="${dlStyle(t.deadline)}">${dlLabel(t.deadline)}</span>`:''}
+      </div>
+      <div class="defer-btns">
+        <span class="defer-btn" onclick="deferFromToday('${t.id}','notNow')">Not now</span>
+        <span class="defer-sep">·</span>
+        <span class="defer-btn" onclick="deferFromToday('${t.id}','tomorrow')">Tomorrow</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderAtRiskSection(atRisk){
+  const el=document.getElementById('today-risk');
+  if(!atRisk.length){
+    el.innerHTML='<div class="at-risk-empty">No deadlines are at risk right now.</div>';return;
+  }
+  el.innerHTML=atRisk.map(t=>`<div class="focus-task urgent">
+    <div class="focus-task-title">${t.title}</div>
+    <div class="task-meta">
+      ${areaSpan(t.area)}<span style="${dlStyle(t.deadline)}">${dlLabel(t.deadline)}</span>
+      ${isDeferred(t)?`<span class="deferred-label">${deferLabel(t)}</span>`:''}
+    </div>
+    <div class="defer-btns">
+      <span class="defer-btn" onclick="deferFromToday('${t.id}','notNow')">Not now</span>
+      <span class="defer-sep">·</span>
+      <span class="defer-btn" onclick="deferFromToday('${t.id}','tomorrow')">Tomorrow</span>
+    </div>
+  </div>`).join('');
+}
+
+function renderCompletedTodaySection(completedToday){
+  const el=document.getElementById('today-done');
+  if(!completedToday.length){
+    el.innerHTML='<div class="today-empty-note">Nothing completed yet today — you\'ve got this.</div>';return;
+  }
+  el.innerHTML=`<div class="wins-card" style="margin-bottom:0">${
+    completedToday.map(t=>`<div class="today-done-item"><span style="color:var(--green);font-weight:700;font-size:13px">✓</span><span>${t.title}</span>${areaSpan(t.area)}</div>`).join('')
+  }</div>`;
+}
+
+
+function renderRecentSessionSection(tasks,logs){
+  const wrap=document.getElementById('today-session-wrap');
+  const el=document.getElementById('today-session');
+  const last=[...logs].reverse()[0];
+  if(!last){wrap.style.display='none';return;}
+  wrap.style.display='block';
+  const tm={};tasks.forEach(t=>tm[t.id]=t);
+  const done=(last.completedIds||[]).map(id=>tm[id]?.title).filter(Boolean);
+  const skipped=(last.skippedIds||[]).map(id=>tm[id]?.title).filter(Boolean);
+  const dateStr=new Date(last.date).toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'});
+  el.innerHTML=`<div class="card" style="margin-bottom:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-size:13px;font-weight:600">${dateStr}</span>
+      <span style="font-size:11px;color:#94a3b8">${last.timeOfDay} · ${last.slotMinutes}min · ${done.length} completed</span>
+    </div>
+    ${done.map(t=>`<div style="font-size:12px;color:#10b981;padding:2px 0">✓ ${t}</div>`).join('')}
+    ${skipped.length?`<div style="font-size:11px;color:#94a3b8;margin-top:4px">Skipped: ${skipped.join(', ')}</div>`:''}
+  </div>`;
+}
+
+function renderToday(){
+  const tasks=loadTasks();
+  const logs=loadLog();
+  const open=tasks.filter(t=>t.status==='open');
+  const atRisk=getAtRiskTasks(tasks);
+  const completedToday=getCompletedToday(tasks,logs);
+  renderTodayHero(open,atRisk,completedToday);
+  renderTodayFocusSection(tasks,logs);
+  renderAtRiskSection(atRisk);
+  renderCompletedTodaySection(completedToday);
+  renderRecentSessionSection(tasks,logs);
+}
+
+// ── next-action banner (dashboard) ───────────────────────────
+function renderNextAction(){
+  const tasks=loadTasks();
+  const open=tasks.filter(t=>t.status==='open');
+  const overdue=open.filter(t=>t.deadline&&daysAway(t.deadline)<0);
+  const dueToday=open.filter(t=>t.deadline&&daysAway(t.deadline)===0);
+  const todayWins=loadLog().filter(s=>s.date===tod()).flatMap(s=>s.completedIds||[]).map(id=>tasks.find(t=>t.id===id)).filter(Boolean);
+  const el=document.getElementById('next-action-banner');
+
+  if(!open.length){
+    el.style.display='flex';el.className='next-action nudge';
+    el.innerHTML=`<div><div class="na-title" style="color:var(--accent)">No tasks yet</div><div class="na-sub">Start by adding your tasks — paste notes in any format.</div></div><button class="btn btn-primary btn-sm" onclick="navGoTo('capture')">Add tasks</button>`;
+    return;
+  }
+  if(overdue.length||dueToday.length){
+    const parts=[];
+    if(overdue.length)parts.push(`${overdue.length} overdue`);
+    if(dueToday.length)parts.push(`${dueToday.length} due today`);
+    el.style.display='flex';el.className='next-action urgent';
+    el.innerHTML=`<div><div class="na-title" style="color:var(--red)">${parts.join(' · ')}</div><div class="na-sub">These need your attention — plan a focused block now.</div></div><button class="btn btn-primary btn-sm" onclick="navGoTo('planner')">Plan block</button>`;
+    return;
+  }
+  if(todayWins.length){
+    el.style.display='flex';el.className='next-action success';
+    el.innerHTML=`<div><div class="na-title" style="color:#065f46">✓ ${todayWins.length} task${todayWins.length>1?'s':''} completed today</div><div class="na-sub">Good progress. Ready for another block?</div></div><button class="btn btn-sm" style="border-color:var(--green);color:var(--green)" onclick="navGoTo('planner')">Plan block</button>`;
+    return;
+  }
+  el.style.display='flex';el.className='next-action nudge';
+  el.innerHTML=`<div><div class="na-title" style="color:var(--accent)">${open.length} task${open.length>1?'s':''} in your backlog</div><div class="na-sub">Ready to plan your next block?</div></div><button class="btn btn-primary btn-sm" onclick="navGoTo('planner')">Plan block</button>`;
+}
+
+// ── planner context ───────────────────────────────────────────
+function autoSetTimeOfDay(){
+  const h=new Date().getHours();
+  document.getElementById('slot-tod').value=h<12?'morning':h<17?'afternoon':'evening';
+}
+
+function updatePlanContext(){
+  const count=loadTasks().filter(t=>t.status==='open').length;
+  const el=document.getElementById('plan-context');
+  el.textContent=count?`${count} open task${count!==1?'s':''} available to plan from.`:'No open tasks — add some before planning.';
+  el.style.color=count?'#94a3b8':'#ef4444';
+}
+
+// ── quick add more-opts toggle ────────────────────────────────
+function toggleMoreOpts(btn){
+  const open=document.getElementById('quick-more-opts').classList.toggle('open');
+  btn.textContent=open?'Fewer options ▴':'More options ▾';
+}
+
+// ── nav ──────────────────────────────────────────────────────
+function pickChip(el){
+  const g=el.dataset.g;
+  document.querySelectorAll(`.chip[data-g="${g}"]`).forEach(c=>c.classList.remove('sel'));
+  el.classList.add('sel');qSel[g]=el.dataset.v;
+}
+
+function goTo(name,btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  if(btn)btn.classList.add('active');
+  if(name==='dashboard')renderDashboard();
+  if(name==='today')renderToday();
+  if(name==='planner'){renderLog();autoSetTimeOfDay();updatePlanContext();updateNavBadge();}
+  if(name==='prefs')renderPrefs();
+}
+
+// ── task inline editing ───────────────────────────────────────
+function escAttr(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+
+function startEdit(id){
+  editingTaskId=id;
+  renderDashboard();
+  requestAnimationFrame(()=>document.getElementById('ei-title-'+id)?.focus());
+}
+function cancelEdit(){editingTaskId=null;renderDashboard();}
+
+function saveEdit(id){
+  const titleEl=document.getElementById('ei-title-'+id);
+  const title=(titleEl?.value||'').trim();
+  if(!title){titleEl?.focus();return;}
+  const area=document.getElementById('ei-area-'+id)?.value;
+  const priority=document.getElementById('ei-pri-'+id)?.value;
+  const energy=document.getElementById('ei-eng-'+id)?.value;
+  const deadline=document.getElementById('ei-dl-'+id)?.value||null;
+  const estimatedMinutes=parseInt(document.getElementById('ei-estmin-'+id)?.value)||null;
+  saveTasks(loadTasks().map(t=>t.id===id?{...t,title,area,priority,energy,deadline,estimatedMinutes}:t));
+  // keep in-flight session in sync
+  sessionPlan=sessionPlan.map(sp=>sp.id===id?{...sp,title,area,priority,energy,deadline,estimatedMinutes,estimatedMin:estimatedMinutes||sp.estimatedMin}:sp);
+  editingTaskId=null;
+  renderDashboard();
+  if(document.getElementById('screen-today').classList.contains('active'))renderToday();
+}
+
+function handleEditKey(e,id){
+  if(e.key==='Enter'){e.preventDefault();saveEdit(id);}
+  if(e.key==='Escape')cancelEdit();
+}
+
+function taskRowHtml(t){
+  if(t.id===editingTaskId)return editRowHtml(t);
+  const estFmt=formatEstimatedMinutes(t.estimatedMinutes);
+  return `<div class="task-row">
+    <div style="flex:1;min-width:0">
+      <div class="task-title">${escAttr(t.title)}</div>
+      <div class="task-meta">
+        ${areaSpan(t.area)}
+        <span style="font-size:11px;color:#94a3b8">${t.priority} · ${t.energy}</span>
+        ${t.deadline?`<span style="${dlStyle(t.deadline)}">${dlLabel(t.deadline)}</span>`:''}
+        ${estFmt?`<span style="font-size:11px;color:var(--text-2)">${estFmt}</span>`:''}
+      </div>
+      ${isDeferred(t)?`<div style="margin-top:3px"><span class="deferred-label">${deferLabel(t)}</span></div>`:''}
+    </div>
+    <div style="display:flex;gap:6px;align-items:center;flex-shrink:0">
+      <button class="edit-btn" onclick="startEdit('${t.id}')">edit</button>
+      <button class="rm-btn" onclick="deleteTask('${t.id}')">remove</button>
+    </div>
+  </div>`;
+}
+
+function editRowHtml(t){
+  const areaOpts=['kid','work','self','home'].map(a=>`<option value="${a}"${t.area===a?' selected':''}>${areaLabel(a)}</option>`).join('');
+  const priOpts=[['high','High'],['med','Med'],['low','Low']].map(([v,l])=>`<option value="${v}"${t.priority===v?' selected':''}>${l}</option>`).join('');
+  const engOpts=[['deep','Deep'],['light','Light'],['errand','Errand']].map(([v,l])=>`<option value="${v}"${t.energy===v?' selected':''}>${l}</option>`).join('');
+  return `<div class="task-row editing">
+    <div style="flex:1;min-width:0">
+      <input type="text" id="ei-title-${t.id}" value="${escAttr(t.title)}"
+        style="margin-bottom:0" onkeydown="handleEditKey(event,'${t.id}')">
+      <div class="edit-fields">
+        <select id="ei-area-${t.id}">${areaOpts}</select>
+        <select id="ei-pri-${t.id}">${priOpts}</select>
+        <select id="ei-eng-${t.id}">${engOpts}</select>
+        <input type="date" id="ei-dl-${t.id}" value="${t.deadline||''}"
+          onkeydown="handleEditKey(event,'${t.id}')">
+        <input type="number" id="ei-estmin-${t.id}" value="${t.estimatedMinutes||''}" min="1" max="480"
+          placeholder="Est. min" style="width:80px" onkeydown="handleEditKey(event,'${t.id}')">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" onclick="saveEdit('${t.id}')">Save</button>
+        <button class="btn btn-sm" onclick="cancelEdit()">Cancel</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── dashboard ────────────────────────────────────────────────
+function renderDashboard(){
+  const tasks=loadTasks(),open=tasks.filter(t=>t.status==='open');
+  renderNextAction();
+  updateNavBadge();
+  const activeTile=document.getElementById('filter-area')?.value||'';
+  document.getElementById('stat-grid').innerHTML=AREAS.map(a=>{
+    const isActive=activeTile===a;
+    const bg=isActive?AREA_BG[a]:'';
+    const ring=isActive?`box-shadow:0 0 0 2px ${AREA_FG[a]},var(--shadow-sm)`:'';
+    return `<div class="stat-card" onclick="filterByArea('${a}')" style="${bg?`background:${bg};`:''}${ring}">`+
+      `<div class="stat-label" style="${isActive?`color:${AREA_FG[a]}`:''}">` +
+      `${areaLabel(a)}</div>` +
+      `<div class="stat-val" style="color:${AREA_FG[a]}">${open.filter(t=>t.area===a).length}</div></div>`;
+  }).join('');
+  const log=loadLog();
+  const wins=log.filter(s=>isTodayLocal(s.ts)).flatMap(s=>s.completedIds||[]).map(id=>tasks.find(t=>t.id===id)).filter(Boolean);
+  const ww=document.getElementById('wins-wrap');
+  if(wins.length){ww.style.display='block';ww.innerHTML=`<div class="wins-card"><div style="font-size:12px;font-weight:700;color:#065f46;margin-bottom:8px">Completed today (${wins.length})</div>${wins.map(t=>`<div style="font-size:12px;color:#065f46;padding:2px 0">✓ ${t.title}</div>`).join('')}</div>`;}
+  else ww.style.display='none';
+  const ws=new Date();ws.setDate(ws.getDate()-ws.getDay());
+  document.getElementById('week-grid').innerHTML=Array.from({length:7},(_,i)=>{
+    const d=new Date(ws);d.setDate(ws.getDate()+i);
+    const key=d.toISOString().slice(0,10),isT=key===tod();
+    const dt=open.filter(t=>t.deadline===key);
+    return `<div class="day-col${isT?' today-col':''}"><div class="day-lbl">${DAYS[d.getDay()]}</div>${dt.slice(0,4).map(t=>`<div class="day-pill" style="background:${AREA_BG[t.area]};color:${AREA_FG[t.area]}">${t.title}</div>`).join('')}${dt.length>4?`<div style="font-size:9px;color:#94a3b8;text-align:center">+${dt.length-4}</div>`:''}</div>`;
+  }).join('');
+  const fa=document.getElementById('filter-area')?.value||'';
+  const fi=document.getElementById('filter-indicator');
+  if(fa){
+    fi.innerHTML=`<div class="filter-indicator"><span>Showing: <strong>${areaLabel(fa)} tasks</strong></span><button class="filter-clear" onclick="clearFilter()">× Clear</button></div>`;
+  }else{
+    fi.innerHTML='';
+  }
+  const filtered=(fa?open.filter(t=>t.area===fa):open).sort((a,b)=>{
+    if(a.deadline&&!b.deadline)return -1;if(!a.deadline&&b.deadline)return 1;
+    if(a.deadline&&b.deadline)return new Date(a.deadline)-new Date(b.deadline);
+    return['high','med','low'].indexOf(a.priority)-['high','med','low'].indexOf(b.priority);
+  });
+  document.getElementById('task-list').innerHTML=filtered.length
+    ?filtered.map(taskRowHtml).join('')
+    :'<div class="empty">No open tasks.</div>';
+}
+
+function deleteTask(id){
+  if(editingTaskId===id)editingTaskId=null;
+  saveTasks(loadTasks().filter(t=>t.id!==id));
+  renderDashboard();
+}
+
+function filterByArea(area){
+  const sel=document.getElementById('filter-area');
+  sel.value=sel.value===area?'':area; // toggle off if already selected
+  renderDashboard();
+  document.getElementById('task-list').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function clearFilter(){
+  document.getElementById('filter-area').value='';
+  renderDashboard();
+}
+
+// ── quick add ────────────────────────────────────────────────
+function quickAdd(){
+  const t=document.getElementById('quick-title').value.trim();
+  if(!t){showEl('quick-err','Please enter a task title.',true);return;}
+  showEl('quick-err','',false);
+  const deadlineEl=document.getElementById('quick-deadline');
+  const deadline=deadlineEl.value||null;
+  const tasks=loadTasks();
+  tasks.push({id:uid(),title:t,area:qSel.area,priority:qSel.pri,energy:qSel.eng,deadline,notes:null,status:'open',createdAt:new Date().toISOString()});
+  saveTasks(tasks);
+  document.getElementById('quick-title').value='';
+  deadlineEl.value='';
+  showEl('quick-ok','Task added!',false);
+  setTimeout(()=>showEl('quick-ok','',false),2000);
+  renderDashboard();
+  navGoTo('dashboard');
+}
+
+// ── parse helpers ─────────────────────────────────────────────
+function inferClientFallbackMinutes(task){
+  const text=((task.title||'')+' '+(task.area||'')).toLowerCase();
+  if(/call|email|reply|text|\bpay\b/.test(text))return 10;
+  if(/schedule|book|order|appointment/.test(text))return 15;
+  if(/clean|laundry|dishes|kitchen|bottles/.test(text))return 30;
+  if(/review|form|paperwork|admin|benefits/.test(text))return 45;
+  if(/write|draft|analysis|research|course|study/.test(text))return 60;
+  if(/errands|shopping|purchase|pickup/.test(text))return 30;
+  return 20;
+}
+
+function normalizeParsedTaskEstimate(task, explicitBySourceId, explicitByKey){
+  // 1. sourceId lookup — deterministic, pre-extracted from raw input before any API call
+  if(task.sourceId!=null&&explicitBySourceId?.[task.sourceId]!=null){
+    const explicit=explicitBySourceId[task.sourceId];
+    if(DEBUG_PARSE)console.debug('[parse] normalize: sourceId',{title:task.title,sourceId:task.sourceId,explicit});
+    return{...task,estimatedMinutes:explicit,estimateSource:'user_provided'};
+  }
+  // 1.5. normalizedKey lookup — fallback when Claude drops or modifies sourceId
+  if(explicitByKey){
+    const taskKey=computeNormalizedKey(task.title||'');
+    if(taskKey&&explicitByKey[taskKey]!=null){
+      if(DEBUG_PARSE)console.debug('[parse] normalize: normalizedKey',{title:task.title,taskKey,val:explicitByKey[taskKey]});
+      return{...task,estimatedMinutes:explicitByKey[taskKey],estimateSource:'user_provided'};
+    }
+  }
+  // 2. explicit extraction from sourceText (second chance if sourceId missing)
+  const fromSrc=extractEstimatedMinutesFromText(task.sourceText||'');
+  if(fromSrc!==null){
+    if(DEBUG_PARSE)console.debug('[parse] normalize: sourceText',{title:task.title,fromSrc});
+    return{...task,estimatedMinutes:fromSrc,estimateSource:'user_provided'};
+  }
+  // 3. server's validated value
+  const fromServer=Number(task.estimatedMinutes);
+  if(Number.isFinite(fromServer)&&fromServer>0){
+    if(DEBUG_PARSE)console.debug('[parse] normalize: server',{title:task.title,fromServer,estimateSource:task.estimateSource});
+    return{...task,estimatedMinutes:fromServer,estimateSource:task.estimateSource||'claude_inferred'};
+  }
+  // 4. client-side keyword fallback
+  const fallback=inferClientFallbackMinutes(task);
+  if(DEBUG_PARSE)console.debug('[parse] normalize: fallback',{title:task.title,fallback});
+  return{...task,estimatedMinutes:fallback,estimateSource:'fallback_inferred'};
+}
+
+// ── parse notes via backend API ──────────────────────────────
+function extractEstimatedMinutesFromText(text){
+  if(!text)return null;
+  const s=String(text).toLowerCase();
+  const matches=[];
+  for(const m of s.matchAll(/\bhalf\s+(an\s+)?hour\b/gi))matches.push({index:m.index,minutes:30});
+  for(const m of s.matchAll(/\ban\s+hour\b/gi))matches.push({index:m.index,minutes:60});
+  for(const m of s.matchAll(/(?:^|[^\d/])(\d+(?:\.\d+)?)\s*(m|min|mins|minute|minutes)\b/gi))
+    matches.push({index:m.index,minutes:Math.round(Number(m[1]))});
+  for(const m of s.matchAll(/(?:^|[^\d/])(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)\b/gi))
+    matches.push({index:m.index,minutes:Math.round(Number(m[1])*60)});
+  for(const m of s.matchAll(/(?:^|[^\d/])(\d+(?:\.\d+)?)\s*-\s*minute\b/gi))
+    matches.push({index:m.index,minutes:Math.round(Number(m[1]))});
+  for(const m of s.matchAll(/(?:^|[^\d/])(\d+(?:\.\d+)?)\s*-\s*hour\b/gi))
+    matches.push({index:m.index,minutes:Math.round(Number(m[1])*60)});
+  const valid=matches.filter(x=>Number.isFinite(x.minutes)&&x.minutes>0).sort((a,b)=>a.index-b.index);
+  return valid.length?valid[valid.length-1].minutes:null;
+}
+
+function computeNormalizedKey(text){
+  if(!text)return'';
+  let s=String(text).toLowerCase();
+  s=s.replace(/\(?due\s+[\d/\-]+\)?/gi,'');
+  s=s.replace(/\bhalf\s+(an\s+)?hour\b/gi,'');
+  s=s.replace(/\ban\s+hour\b/gi,'');
+  s=s.replace(/\d+(?:\.\d+)?\s*-?\s*(?:hours?|hrs?|h)\b/gi,'');
+  s=s.replace(/\d+(?:\.\d+)?\s*-?\s*(?:minutes?|mins?|m)\b/gi,'');
+  s=s.replace(/[-–—~()\[\]|·•]+/g,' ');
+  return s.replace(/\s+/g,' ').trim();
+}
+
+function renderParseBuf(){
+  if(!parsedBuf.length){clearParse();return;}
+  document.getElementById('parse-review').style.display='block';
+  document.getElementById('parse-result').innerHTML=parsedBuf.map((t,i)=>{
+    const estVal=t.estimatedMinutes??'';
+    const srcLabel=t.estimateSource==='user_provided'?'from note':t.estimateSource==='claude_inferred'?'estimated':t.estimateSource==='fallback_inferred'?'estimated':'';
+    const missingCls=(!(t.estimatedMinutes>0))?'style="outline:1px solid var(--red);border-radius:4px"':'';
+    return `<div class="parse-item">
+      <div style="flex:1;min-width:0">
+        <div class="task-title" style="margin-bottom:5px">${escAttr(t.title)}</div>
+        <div class="task-meta" style="flex-wrap:wrap;gap:5px;align-items:center">
+          ${areaSpan(t.area)}
+          <span style="font-size:11px;color:var(--text-2)">${t.priority||'med'} · ${t.energy||'light'}</span>
+          ${t.deadline?`<span style="${dlStyle(t.deadline)}">${dlLabel(t.deadline)}</span>`:''}
+          <span style="display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--text-2)">
+            <input type="number" class="parse-estmin" min="1" max="480" value="${estVal}"
+              placeholder="add min" title="Estimated minutes" ${missingCls}
+              onchange="updateParsedEstMin(${i},this.value)">
+            min
+            ${srcLabel?`<span style="font-size:10px;color:var(--text-3);font-style:italic">${srcLabel}</span>`:''}
+          </span>
+        </div>
+      </div>
+      <button onclick="removeParsed(${i})" class="parse-item-rm" title="Remove">×</button>
+    </div>`;
+  }).join('');
+}
+
+async function parseNotes(){
+  const raw=document.getElementById('raw-notes').value.trim();
+  if(!raw){showEl('parse-err','Please enter some notes first.',true);return;}
+  const btn=document.getElementById('parse-btn');
+  btn.disabled=true;btn.textContent='Parsing...';
+  showEl('parse-err','',false);
+  try{
+    // pre-process raw lines BEFORE calling API — extract explicit times deterministically
+    const sourceLines=raw.split(/\r?\n/).map((l,i)=>({
+      sourceId:'line_'+i,
+      sourceText:l.trim(),
+      explicitEstimatedMinutes:extractEstimatedMinutesFromText(l.trim())
+    })).filter(sl=>sl.sourceText);
+    if(DEBUG_PARSE)console.log('[parse] sourceLines',sourceLines);
+
+    const res=await fetch('/api/parse',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({notes:raw,sourceLines})
+    });
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Server error');
+    if(DEBUG_PARSE)console.log('[parse] raw response',data);
+
+    // build lookups: sourceId → explicit minutes, normalizedKey → explicit minutes
+    const explicitBySourceId={};
+    const explicitByKey={};
+    sourceLines.forEach(sl=>{
+      if(sl.explicitEstimatedMinutes!==null){
+        explicitBySourceId[sl.sourceId]=sl.explicitEstimatedMinutes;
+        const key=computeNormalizedKey(sl.sourceText);
+        if(key)explicitByKey[key]=sl.explicitEstimatedMinutes;
+      }
+    });
+    if(DEBUG_PARSE)console.log('[parse] explicitBySourceId',explicitBySourceId);
+    if(DEBUG_PARSE)console.log('[parse] explicitByKey',explicitByKey);
+
+    const rawTasks=Array.isArray(data)?data:(data.tasks||[]);
+    if(!rawTasks.length)throw new Error('No tasks found in your notes');
+    parsedBuf=rawTasks.map(t=>normalizeParsedTaskEstimate(t,explicitBySourceId,explicitByKey));
+    if(DEBUG_PARSE)console.log('[parse] parsedBuf',parsedBuf.map(t=>({title:t.title,estimatedMinutes:t.estimatedMinutes,estimateSource:t.estimateSource,sourceId:t.sourceId})));
+    renderParseBuf();
+  }catch(e){showEl('parse-err',e.message,true);}
+  btn.disabled=false;btn.textContent='Parse with AI';
+}
+
+function updateParsedEstMin(i,val){
+  const n=parseInt(val);
+  if(n>0){parsedBuf[i].estimatedMinutes=n;parsedBuf[i].estimateSource='user_provided';}
+  else{parsedBuf[i].estimatedMinutes=null;parsedBuf[i].estimateSource=null;}
+}
+
+function removeParsed(i){
+  parsedBuf.splice(i,1);
+  renderParseBuf();
+}
+
+function confirmTasks(){
+  if(!parsedBuf.length)return;
+  const missing=parsedBuf.filter(t=>!(t.estimatedMinutes>0));
+  if(missing.length){
+    showEl('parse-err','Add an estimated time for: '+missing.map(t=>'“'+t.title+'”').join(', '),true);
+    renderParseBuf();// re-render to show red outlines on missing items
+    return;
+  }
+  const existing=loadTasks(),now=new Date().toISOString();
+  saveTasks([...existing,...parsedBuf.map(t=>({
+    ...t,
+    id:uid(),createdAt:now,status:'open'
+  }))]);
+  const count=parsedBuf.length;
+  clearParse();
+  document.getElementById('raw-notes').value='';
+  showEl('confirm-msg',count+' tasks saved!',false);
+  renderDashboard();
+  navGoTo('dashboard');
+}
+
+function clearParse(){parsedBuf=[];document.getElementById('parse-review').style.display='none';document.getElementById('parse-result').innerHTML='';}
+
+function toggleFocusInfo(){
+  const el=document.getElementById('focus-info-body');
+  el.style.display=el.style.display==='none'?'block':'none';
+}
+
+function toggleHowPlan(){
+  const body=document.getElementById('how-plan-body');
+  const icon=document.getElementById('how-plan-icon');
+  const isOpen=body.style.display!=='none';
+  body.style.display=isOpen?'none':'block';
+  icon.classList.toggle('open',!isOpen);
+}
+
+function buildWhyPlanLines(minutes,mood,plannedTasks,preferences,realtimeInput,logs){
+  const lines=[];
+  lines.push(`You have ${minutes} minute${minutes===1?'':'s'} in this block.`);
+  const moodNote={
+    focused:"You're feeling focused, so we included deeper, more engaging tasks.",
+    'low-energy':"You selected Low Energy, so we kept things light and manageable.",
+    'hard-to-focus':"You selected Hard to focus, so we picked short, clearly bounded tasks."
+  }[mood];
+  if(moodNote)lines.push(moodNote);
+  const tmr=new Date();tmr.setDate(tmr.getDate()+1);
+  const tmrStr=tmr.toISOString().slice(0,10);
+  const urgent=plannedTasks.filter(t=>t.deadline&&t.deadline<=tmrStr);
+  if(urgent.length===1)lines.push('One task is due soon and was given priority.');
+  else if(urgent.length>1)lines.push(`${urgent.length} tasks are due soon and were given priority.`);
+  if(realtimeInput)lines.push('We considered what you shared for this moment.');
+  if(preferences&&preferences.trim())lines.push('Your scheduling preferences were applied.');
+  if(logs.length>=5)lines.push('Your recent session history helped shape this plan.');
+  return lines;
+}
+
+// ── generate plan via backend API ────────────────────────────
+async function generatePlan(){
+  const minutes=parseInt(document.getElementById('slot-min').value)||90;
+  const timeOfDay=document.getElementById('slot-tod').value;
+  const mood=document.querySelector('#mood-row .mood-btn.sel')?.dataset.val||'default';
+  const tasks=loadTasks().filter(t=>t.status==='open'&&!isDeferred(t));
+  if(!tasks.length){showEl('plan-err','No open tasks available — some may be deferred.',true);return;}
+  showEl('plan-err','',false);
+  sessionDeferred=[];
+  sessionAdjusted=false;sessionAdjustmentTs=null;sessionAdjustmentReason=null;
+  sessionOriginalMinutes=null;sessionAdjustedMinutes=null;
+  document.getElementById('adjusted-badge').style.display='none';
+  document.getElementById('why-plan-card').style.display='none';
+  document.getElementById('block-time-label').style.display='none';
+  sessionBlockStart=null;sessionBlockEnd=null;
+  const preferences=loadPrefs().instructions||'';
+  const realtimeInput=document.getElementById('realtime-input').value.trim()||null;
+  const logs=loadLog().slice(-15);
+  const btn=document.getElementById('gen-plan-btn');
+  btn.disabled=true;btn.textContent='Planning...';
+  try{
+    const res=await fetch('/api/plan',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({tasks,preferences,minutes,timeOfDay,mood,sessionLogs:logs,realtimeInput})
+    });
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Server error');
+    const candidates=data.plan.map(p=>{
+      const t=tasks.find(t=>t.id===p.id);
+      if(!t)return null;
+      const estMin=t.estimatedMinutes||p.estimatedMin||inferClientFallbackMinutes(t);
+      return{...t,reason:p.reason,estimatedMin:estMin,ss:'open'};
+    }).filter(Boolean);
+    // enforce total-minutes cap: keep tasks in Claude's order, skip any that would exceed
+    let capTotal=0;
+    const bounded=[];
+    for(const item of candidates){
+      if(capTotal+(item.estimatedMin||0)<=minutes){
+        bounded.push(item);
+        capTotal+=(item.estimatedMin||0);
+      }
+    }
+    if(!bounded.length){
+      throw new Error('Nothing fits cleanly in this block. Try increasing the time or adding a smaller task.');
+    }
+    sessionPlan=bounded;
+    sessionBlockMinutes=minutes;
+    sessionBlockStart=new Date().toISOString();
+    sessionBlockEnd=new Date(Date.now()+minutes*60000).toISOString();
+    const btl=document.getElementById('block-time-label');
+    btl.textContent='Block: '+fmtTime(sessionBlockStart)+' – '+fmtTime(sessionBlockEnd);
+    btl.style.display='block';
+    document.getElementById('session-wrap').style.display='block';
+    renderSessionTasks();
+    const whyLines=buildWhyPlanLines(minutes,mood,sessionPlan,preferences,realtimeInput,logs);
+    const whyCard=document.getElementById('why-plan-card');
+    whyCard.innerHTML=`<div class="why-plan-title">Why this plan?</div>${whyLines.map(l=>`<div class="why-plan-line">${l}</div>`).join('')}`;
+    whyCard.style.display='block';
+    document.getElementById('session-wrap').scrollIntoView({behavior:'smooth',block:'start'});
+  }catch(e){showEl('plan-err',e.message,true);}
+  btn.disabled=false;btn.textContent='Plan this block';
+}
+
+// ── session ──────────────────────────────────────────────────
+function renderSessionTasks(){
+  const total=sessionPlan.length,doneCount=sessionPlan.filter(t=>t.ss==='done').length;
+  document.getElementById('s-progress').style.width=(total?Math.round(doneCount/total*100):0)+'%';
+  document.getElementById('s-label').textContent=doneCount+' of '+total+' done';
+  const timeEl=document.getElementById('s-time-label');
+  if(timeEl&&sessionBlockMinutes){
+    const plannedTotal=sessionPlan.reduce((s,t)=>s+(t.estimatedMin||0),0);
+    timeEl.textContent='Planned: '+plannedTotal+' / '+sessionBlockMinutes+' min';
+    timeEl.style.color=plannedTotal>sessionBlockMinutes?'var(--red)':'#94a3b8';
+  }
+  const firstOpenIdx=sessionPlan.findIndex(t=>t.ss==='open');
+  document.getElementById('session-tasks').innerHTML=sessionPlan.map((t,i)=>{
+    const isDone=t.ss==='done',isSkip=t.ss==='skipped',isNext=i===firstOpenIdx;
+    const deferHtml=(!isDone&&!isSkip)?`
+      <div class="defer-btns">
+        <span class="defer-btn" onclick="deferFromSession(${i},'notNow')">Not now</span>
+        <span class="defer-sep">·</span>
+        <span class="defer-btn" onclick="deferFromSession(${i},'tomorrow')">Tomorrow</span>
+        <span class="defer-sep">·</span>
+        <span class="defer-btn" onclick="showRescheduleInline(${i})">Reschedule…</span>
+      </div>
+      <div class="reschedule-form" id="rf-${i}">
+        <input type="date" id="rd-${i}" min="${tod()}">
+        <button class="btn btn-primary btn-sm" onclick="applyReschedule(${i})">Set</button>
+        <button class="btn btn-sm" onclick="document.getElementById('rf-${i}').style.display='none'">Cancel</button>
+      </div>`:'';
+    return `<div class="stask${isDone?' done':isSkip?' skipped':isNext?' next':''}">
+      <div class="stask-body">
+        ${isNext?'<div class="next-up-label">Next up</div>':''}
+        <div class="stask-title${isDone||isSkip?' struck':''}">${t.title}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:5px">
+          ${areaSpan(t.area)}
+          <span style="font-size:11px;color:#94a3b8">${t.energy} · ~${t.estimatedMin}min</span>
+          ${t.deadline?`<span style="${dlStyle(t.deadline)}">${dlLabel(t.deadline)}</span>`:''}
+        </div>
+        <div style="font-size:11px;color:#64748b">${t.reason}</div>
+        ${deferHtml}
+      </div>
+      ${isDone
+        ?`<button class="stask-btn done" onclick="setStatus(${i},'open')">✓ Done</button>`
+        :isSkip
+          ?`<button class="stask-btn skipped" onclick="setStatus(${i},'open')">✕ Skipped</button>`
+          :`<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+              <button class="stask-btn done" onclick="setStatus(${i},'done')">✓ Done</button>
+              <button class="stask-btn skipped" onclick="setStatus(${i},'skipped')">Skip</button>
+            </div>`
+      }
+    </div>`;
+  }).join('');
+}
+
+function setStatus(i,status){
+  sessionPlan[i].ss=status;
+  renderSessionTasks();
+}
+
+function finishSession(){
+  const timeOfDay=document.getElementById('slot-tod').value;
+  const mood=document.querySelector('#mood-row .mood-btn.sel')?.dataset.val||'default';
+  const minutesPlanned=parseInt(document.getElementById('slot-min').value)||90;
+
+  const doneItems=sessionPlan.filter(t=>t.ss==='done');
+  const skipItems=sessionPlan.filter(t=>t.ss==='skipped');
+  const openItems=sessionPlan.filter(t=>t.ss==='open');
+  const doneIds=doneItems.map(t=>t.id);
+  const skipIds=skipItems.map(t=>t.id);
+
+  // tasks deferred mid-session (excluding any that were undone back into plan)
+  const planIds=new Set(sessionPlan.map(t=>t.id));
+  const effectiveDeferred=sessionDeferred.filter(d=>!planIds.has(d.id));
+
+  const minutesCompleted=doneItems.reduce((sum,t)=>sum+(t.estimatedMin||0),0);
+
+  const taskEntries=[
+    ...doneItems.map(t=>({taskId:t.id,result:'done',estimatedMinutes:t.estimatedMin})),
+    ...skipItems.map(t=>({taskId:t.id,result:'skipped',estimatedMinutes:t.estimatedMin})),
+    ...openItems.map(t=>({taskId:t.id,result:'open',estimatedMinutes:t.estimatedMin})),
+    ...effectiveDeferred.map(d=>{
+      const current=loadTasks().find(t=>t.id===d.id);
+      return{taskId:d.id,result:'deferred',estimatedMinutes:d.estimatedMin,deferredUntil:current?.deferredUntil||null};
+    })
+  ];
+
+  if(doneIds.length>0){
+    const completedAt=new Date().toISOString();
+    saveTasks(loadTasks().map(t=>doneIds.includes(t.id)?{...t,status:'done',completedAt}:t));
+  }
+
+  appendLog({
+    ts:Date.now(),date:tod(),timeOfDay,mood,
+    blockStartTime:sessionBlockStart||undefined,
+    blockEndTime:sessionBlockEnd||undefined,
+    minutesPlanned:sessionAdjusted?sessionOriginalMinutes:minutesPlanned,
+    minutesCompleted,
+    ...(sessionAdjusted&&{
+      adjusted:true,
+      adjustmentTs:sessionAdjustmentTs,
+      adjustmentReason:sessionAdjustmentReason||undefined,
+      originalMinutesPlanned:sessionOriginalMinutes,
+      adjustedMinutesPlanned:sessionAdjustedMinutes
+    }),
+    tasks:taskEntries,
+    // legacy fields kept for server-side buildSessionContext compatibility
+    completedIds:doneIds,skippedIds:skipIds,slotMinutes:minutesPlanned
+  });
+
+  sessionPlan=[];sessionDeferred=[];
+  sessionAdjusted=false;sessionAdjustmentTs=null;sessionAdjustmentReason=null;
+  sessionOriginalMinutes=null;sessionAdjustedMinutes=null;
+  sessionBlockStart=null;sessionBlockEnd=null;sessionBlockMinutes=null;
+  document.getElementById('adjusted-badge').style.display='none';
+  document.getElementById('block-time-label').style.display='none';
+  document.getElementById('session-wrap').style.display='none';
+  renderLog();renderDashboard();
+  navGoTo('dashboard');
+}
+
+// ── adjust plan ───────────────────────────────────────────────
+function openAdjustPlanModal(){
+  // pre-fill with estimated remaining time
+  const remaining=sessionPlan.filter(t=>t.ss!=='done').reduce((s,t)=>s+(t.estimatedMin||0),0);
+  document.getElementById('adjust-minutes').value=remaining||'';
+  document.querySelectorAll('.adjust-quick').forEach(b=>b.classList.remove('sel'));
+  document.querySelectorAll('.adjust-energy-btn').forEach(b=>b.classList.remove('sel'));
+  document.getElementById('adjust-reason').value='';
+  showEl('adjust-err','',false);
+  document.getElementById('adjust-panel').style.display='block';
+  document.getElementById('adjust-panel').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
+function closeAdjustPlanModal(){
+  document.getElementById('adjust-panel').style.display='none';
+  showEl('adjust-err','',false);
+}
+
+function setAdjustTime(el,min){
+  document.getElementById('adjust-minutes').value=min;
+  document.querySelectorAll('.adjust-quick').forEach(b=>b.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+function selectAdjustEnergy(el){
+  document.querySelectorAll('.adjust-energy-btn').forEach(b=>b.classList.remove('sel'));
+  el.classList.add('sel');
+}
+
+function appendAdjustReason(text){
+  const ta=document.getElementById('adjust-reason');
+  ta.value=(ta.value?ta.value+'. ':'')+text;
+  ta.focus();
+}
+
+function getEligibleTasksForAdjustment(){
+  const allTasks=loadTasks();
+  const now=new Date();
+  const sessionIds=new Set(sessionPlan.map(t=>t.id));
+
+  // unfinished tasks from current session (open or skipped)
+  const unfinished=sessionPlan
+    .filter(t=>t.ss!=='done')
+    .map(t=>allTasks.find(at=>at.id===t.id))
+    .filter(Boolean);
+
+  // other open tasks not already in session
+  const others=allTasks.filter(t=>{
+    if(t.status!=='open')return false;
+    if(sessionIds.has(t.id))return false;
+    // exclude deferred unless overdue/due-today
+    if(t.deferredUntil&&new Date(t.deferredUntil)>now){
+      const da=daysAway(t.deadline);
+      if(da===null||da>0)return false;
+    }
+    return true;
+  });
+
+  return[...unfinished,...others];
+}
+
+function mergeAdjustedPlanWithCompletedTasks(newPlan,taskLookup){
+  const taskMap={};
+  loadTasks().forEach(t=>taskMap[t.id]=t);
+  taskLookup.forEach(t=>{taskMap[t.id]=t;});
+
+  const doneItems=sessionPlan.filter(t=>t.ss==='done');
+  const newItems=newPlan.map(p=>{
+    const t=taskMap[p.id];if(!t)return null;
+    return{...t,reason:p.reason,estimatedMin:p.estimatedMin||null,ss:'open'};
+  }).filter(Boolean);
+
+  sessionPlan=[...doneItems,...newItems];
+}
+
+function showAdjustMessage(msg,neutral=false){
+  const el=document.getElementById('adjust-msg');
+  el.textContent=msg;
+  el.className='adjust-msg'+(neutral?' neutral':'');
+  el.style.display='block';
+  setTimeout(()=>el.style.display='none',8000);
+}
+
+async function adjustCurrentPlan(){
+  const minutes=parseInt(document.getElementById('adjust-minutes').value);
+  if(!minutes||minutes<1){showEl('adjust-err','Please enter how much time you have.',true);return;}
+  const mood=document.querySelector('.adjust-energy-btn.sel')?.dataset.val||'default';
+  const reason=document.getElementById('adjust-reason').value.trim();
+  const timeOfDay=document.getElementById('slot-tod').value;
+  const preferences=loadPrefs().instructions||'';
+  const eligible=getEligibleTasksForAdjustment();
+
+  if(!eligible.length){
+    closeAdjustPlanModal();
+    showAdjustMessage("Nothing else needs to fit right now. You can stop here or add a quick task.",true);
+    return;
+  }
+
+  const realtimeContext=reason
+    ?`Plan adjusted mid-session. ${reason}`
+    :'Plan adjusted mid-session due to changed circumstances.';
+
+  const btn=document.getElementById('adjust-submit-btn');
+  btn.disabled=true;btn.textContent='Adjusting...';
+  showEl('adjust-err','',false);
+
+  try{
+    const res=await fetch('/api/plan',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        tasks:eligible,preferences,minutes,timeOfDay,mood,
+        sessionLogs:loadLog().slice(-15),
+        realtimeInput:realtimeContext
+      })
+    });
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Server error');
+
+    if(!data.plan.length){
+      closeAdjustPlanModal();
+      showAdjustMessage("Nothing else needs to fit right now. You can stop here or add a quick task.",true);
+      return;
+    }
+
+    // record adjustment metadata (preserve original minutes on first adjust only)
+    if(!sessionAdjusted){
+      sessionOriginalMinutes=parseInt(document.getElementById('slot-min').value)||90;
+    }
+    sessionAdjusted=true;
+    sessionAdjustmentTs=Date.now();
+    sessionAdjustmentReason=reason||null;
+    sessionAdjustedMinutes=minutes;
+
+    mergeAdjustedPlanWithCompletedTasks(data.plan,eligible);
+    closeAdjustPlanModal();
+    document.getElementById('adjusted-badge').style.display='inline-block';
+    showAdjustMessage("I adjusted the rest of this block.");
+    renderSessionTasks();
+  }catch(e){showEl('adjust-err',e.message,true);}
+  btn.disabled=false;btn.textContent='Adjust block';
+}
+
+// ── session defer actions ─────────────────────────────────────
+function deferFromSession(i,type){
+  const task=sessionPlan[i];if(!task)return;
+  const prevDeferred=task.deferredUntil||null;
+  sessionPlan.splice(i,1);
+  rescheduleTask(task.id,type);
+  sessionDeferred.push({id:task.id,estimatedMin:task.estimatedMin});
+  const msg=type==='notNow'?"Moved out of this block — we'll bring it back later.":'Scheduled for tomorrow morning.';
+  showToast(msg,()=>{
+    const di=sessionDeferred.findIndex(d=>d.id===task.id);
+    if(di!==-1)sessionDeferred.splice(di,1);
+    sessionPlan.splice(i,0,{...task,deferredUntil:prevDeferred});
+    saveTasks(loadTasks().map(t=>t.id===task.id?{...t,deferredUntil:prevDeferred||undefined}:t));
+    renderSessionTasks();
+  });
+  renderSessionTasks();
+}
+
+function showRescheduleInline(i){
+  const rf=document.getElementById('rf-'+i);
+  if(!rf)return;
+  rf.style.display=rf.style.display==='flex'?'none':'flex';
+}
+
+function applyReschedule(i){
+  const dateVal=document.getElementById('rd-'+i)?.value;
+  if(!dateVal)return;
+  const task=sessionPlan[i];if(!task)return;
+  const prevDeferred=task.deferredUntil||null;
+  sessionPlan.splice(i,1);
+  rescheduleTask(task.id,'custom',dateVal);
+  sessionDeferred.push({id:task.id,estimatedMin:task.estimatedMin});
+  const d=new Date(dateVal+'T12:00:00');
+  const dateLabel=d.toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'});
+  showToast(`Rescheduled for ${dateLabel}.`,()=>{
+    const di=sessionDeferred.findIndex(d=>d.id===task.id);
+    if(di!==-1)sessionDeferred.splice(di,1);
+    sessionPlan.splice(i,0,{...task,deferredUntil:prevDeferred});
+    saveTasks(loadTasks().map(t=>t.id===task.id?{...t,deferredUntil:prevDeferred||undefined}:t));
+    renderSessionTasks();
+  });
+  renderSessionTasks();
+}
+
+// ── today defer actions ───────────────────────────────────────
+function deferFromToday(taskId,type){
+  const tasks=loadTasks();
+  const task=tasks.find(t=>t.id===taskId);if(!task)return;
+  const prevDeferred=task.deferredUntil||null;
+  rescheduleTask(taskId,type);
+  const msg=type==='notNow'?"Moved out of focus — we'll bring it back later.":'Scheduled for tomorrow morning.';
+  showToast(msg,()=>{
+    saveTasks(loadTasks().map(t=>t.id===taskId?{...t,deferredUntil:prevDeferred||undefined}:t));
+    renderToday();
+  });
+  renderToday();
+}
+
+// ── log ──────────────────────────────────────────────────────
+function renderLog(){
+  const log=loadLog(),tasks=loadTasks(),el=document.getElementById('log-list');
+  if(!log.length){el.innerHTML='<div class="empty">No completed sessions yet.</div>';return;}
+  el.innerHTML=[...log].reverse().slice(0,10).map(s=>{
+    const done=(s.completedIds||[]).map(id=>tasks.find(t=>t.id===id)?.title).filter(Boolean);
+    const skip=(s.skippedIds||[]).map(id=>tasks.find(t=>t.id===id)?.title).filter(Boolean);
+    const deferred=(s.tasks||[]).filter(e=>e.result==='deferred').map(e=>tasks.find(t=>t.id===e.taskId)?.title).filter(Boolean);
+    const dateStr=new Date(s.date).toLocaleDateString('en',{weekday:'short',month:'short',day:'numeric'});
+    const moodStr=moodDisplay(normalizeMood(s.mood||'default'));
+    const moodLabel=moodStr?` · ${moodStr}`:'';
+    return `<div class="log-item">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span style="font-weight:700;color:#0f172a">${dateStr}</span>
+        <span style="font-size:11px;color:#94a3b8">${s.timeOfDay}${moodLabel} · ${s.minutesPlanned||s.slotMinutes||'?'}min · ${done.length} done</span>
+      </div>
+      ${done.map(t=>`<div style="font-size:12px;color:#10b981;padding:2px 0">✓ ${t}</div>`).join('')}
+      ${skip.length?`<div style="font-size:11px;color:#94a3b8;margin-top:4px">Skipped: ${skip.join(', ')}</div>`:''}
+      ${deferred.length?`<div style="font-size:11px;color:#94a3b8;margin-top:2px">Deferred: ${deferred.join(', ')}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ── prefs ────────────────────────────────────────────────────
+function saveInstructions(){
+  const p=loadPrefs();p.instructions=document.getElementById('prefs-inst').value.trim();
+  savePrefs(p);showEl('inst-msg','Saved.',false);setTimeout(()=>showEl('inst-msg','',false),2000);
+}
+
+function renderPrefs(){
+  document.getElementById('prefs-inst').value=loadPrefs().instructions||'';
+}
+
+// ── dev test helpers ─────────────────────────────────────────
+window.testEstimateExtraction=function(){
+  const cases=[
+    ['Update LinkedIn intro with core pitch (due 05/09) - 45 mins',45],
+    ['AI notes review (30 mins)',30],
+    ['Competitive analysis for issuing debt and capital (1 hr)',60],
+    ['Product sense course (45 mins)',45],
+    ['Write PM interview prep - 1.5 hours',90],
+    ['Clean kitchen - half hour',30],
+    ['Draft memo — 45-minute focus',45]
+  ];
+  let allPass=true;
+  cases.forEach(([input,expected])=>{
+    const actual=extractEstimatedMinutesFromText(input);
+    const pass=actual===expected;
+    console.log(pass?'✓':'✗',JSON.stringify(input),'expected',expected,'got',actual);
+    if(!pass)allPass=false;
+  });
+  console.log(allPass?'ALL PASS':'FAILED — see above');
+  return allPass;
+};
+
+// ── wire up buttons ──────────────────────────────────────────
+document.getElementById('parse-btn').addEventListener('click',parseNotes);
+document.getElementById('gen-plan-btn').addEventListener('click',generatePlan);
+document.getElementById('finish-btn').addEventListener('click',finishSession);
+document.getElementById('save-inst-btn').addEventListener('click',saveInstructions);
+const APP_KEYS=['sched_tasks','sched_prefs','sched_log'];
+
+function deleteTaskList(){
+  if(!confirm('Delete all tasks? Your planning history and preferences will be kept.'))return;
+  localStorage.removeItem('sched_tasks');
+  sessionPlan=[];sessionDeferred=[];sessionBlockMinutes=null;
+  document.getElementById('session-wrap').style.display='none';
+  showEl('clear-msg','Task list deleted.',false);
+  setTimeout(()=>showEl('clear-msg','',false),2500);
+  renderDashboard();
+  if(document.getElementById('screen-today').classList.contains('active'))renderToday();
+}
+
+function resetLearningSystem(){
+  if(!confirm('Reset all local learning data? This will remove tasks, history, and preferences from this browser.'))return;
+  APP_KEYS.forEach(k=>localStorage.removeItem(k));
+  sessionPlan=[];sessionDeferred=[];sessionBlockMinutes=null;
+  document.getElementById('session-wrap').style.display='none';
+  document.getElementById('prefs-inst').value='';
+  showEl('clear-msg','All data reset.',false);
+  setTimeout(()=>showEl('clear-msg','',false),2500);
+  renderDashboard();
+  if(document.getElementById('screen-today').classList.contains('active'))renderToday();
+}
+
+document.getElementById('clear-tasks-btn').addEventListener('click',deleteTaskList);
+document.getElementById('clear-all-btn').addEventListener('click',resetLearningSystem);
+document.querySelectorAll('#mood-row .mood-btn').forEach(btn=>btn.addEventListener('click',()=>{
+  document.querySelectorAll('#mood-row .mood-btn').forEach(b=>b.classList.remove('sel'));
+  btn.classList.add('sel');
+}));
+
+// ── init ─────────────────────────────────────────────────────
+renderDashboard();
+</script>
+</body>
+</html>
