@@ -4,10 +4,18 @@ const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
 
 const app = express();
-const client = new Anthropic();
 
 app.use(cors());
 app.use(express.json());
+
+// Prevent browser from caching HTML so clients always get the latest version
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path.endsWith('.html')) {
+    res.setHeader('Cache-Control', 'no-store');
+  }
+  next();
+});
+
 app.use(express.static('public'));
 
 const TODAY = () => new Date().toISOString().slice(0, 10);
@@ -113,6 +121,35 @@ function buildSessionContext(logs, tasks) {
   return lines.join('\n');
 }
 
+// ── JSON parse helper ────────────────────────────────────────
+// Claude sometimes embeds literal newline/tab characters inside JSON string
+// values (invalid JSON), or omits double-quotes around property names.
+// Walk the raw text once to fix control characters inside strings, then
+// parse; if that still fails, quote any bare property names and retry.
+function parseClaudeJSON(text) {
+  const stripped = text.replace(/```json|```/g, '').trim();
+
+  // Pass 1: escape literal control characters inside string values
+  let s = '';
+  let inString = false;
+  let esc = false;
+  for (const c of stripped) {
+    if (esc) { s += c; esc = false; continue; }
+    if (c === '\\' && inString) { s += c; esc = true; continue; }
+    if (c === '"') { s += c; inString = !inString; continue; }
+    if (inString && (c === '\n' || c === '\r')) { s += '\\n'; continue; }
+    if (inString && c === '\t') { s += '\\t'; continue; }
+    s += c;
+  }
+
+  // Pass 2: direct parse
+  try { return JSON.parse(s); } catch {}
+
+  // Pass 3: quote bare property names (e.g. {key: "v"} → {"key": "v"})
+  const repaired = s.replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":');
+  return JSON.parse(repaired);
+}
+
 // ── helpers for /api/parse ───────────────────────────────────
 function extractMinutesFromText(text) {
   if (!text) return null;
@@ -170,6 +207,11 @@ app.post('/api/parse', async (req, res) => {
   const { notes, sourceLines } = req.body;
   if (!notes) return res.status(400).json({ error: 'No notes provided' });
 
+  const userApiKey = req.headers['x-anthropic-api-key'];
+  const apiKey = userApiKey || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(401).json({ error: 'Claude API key required for personalized planning.' });
+  const client = new Anthropic({ apiKey });
+
   // build structured user content when sourceLines are provided (preferred path)
   const userContent = sourceLines?.length
     ? 'Extract tasks from these source lines. Copy the sourceId exactly as given for each task:\n' +
@@ -179,7 +221,7 @@ app.post('/api/parse', async (req, res) => {
   try {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2048,
+      max_tokens: 8192,
       system: `You are a task parser for a busy mom. Extract every distinct task from notes.
 Return ONLY a raw JSON array — no markdown, no explanation.
 Each element has exactly these fields:
@@ -213,9 +255,7 @@ Return only the JSON array starting with [`,
       messages: [{ role: 'user', content: userContent }]
     });
 
-    const text = message.content[0].text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(clean);
+    const parsed = parseClaudeJSON(message.content[0].text);
     // accept both [...] and {"tasks":[...]} shapes from Claude
     const rawTasks = Array.isArray(parsed) ? parsed : (parsed.tasks || []);
     // use provided source line texts for server-side normalization fallback
@@ -239,6 +279,11 @@ Return only the JSON array starting with [`,
 app.post('/api/plan', async (req, res) => {
   const { tasks, preferences, minutes, timeOfDay, mood, sessionLogs, realtimeInput } = req.body;
   if (!tasks?.length) return res.status(400).json({ error: 'No tasks provided' });
+
+  const userApiKey = req.headers['x-anthropic-api-key'];
+  const apiKey = userApiKey || process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return res.status(401).json({ error: 'Claude API key required for personalized planning.' });
+  const client = new Anthropic({ apiKey });
 
   const normalizedMood = { good: 'default', tired: 'low-energy', scattered: 'hard-to-focus' }[mood] || mood || 'default';
 
@@ -329,9 +374,7 @@ Open tasks: ${JSON.stringify(tasks.map(t => ({
       }]
     });
 
-    const text = message.content[0].text;
-    const clean = text.replace(/```json|```/g, '').trim();
-    const plan = JSON.parse(clean);
+    const plan = parseClaudeJSON(message.content[0].text);
     res.json({ plan });
   } catch (err) {
     console.error('/api/plan error:', err.message);

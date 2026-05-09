@@ -250,6 +250,18 @@ textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);
 .why-plan{background:var(--surface-2);border-radius:var(--r-sm);padding:12px 16px;margin-bottom:16px;font-size:12px;color:var(--text-2);line-height:1.75}
 .why-plan-title{font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px}
 .why-plan-line{padding:1px 0}
+
+/* ── welcome overlay ─────────────────────────────────────────── */
+.welcome-overlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+.welcome-box{max-width:560px;width:100%;text-align:center}
+.welcome-title{font-size:26px;font-weight:800;color:var(--text);letter-spacing:-.03em;margin-bottom:8px}
+.welcome-sub{font-size:14px;color:var(--text-2);margin-bottom:36px;line-height:1.6}
+.welcome-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;text-align:left}
+.welcome-card{background:var(--surface);border:2px solid var(--border);border-radius:var(--r);padding:24px 20px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.welcome-card:hover{border-color:var(--accent);box-shadow:var(--shadow)}
+.welcome-card-title{font-size:14px;font-weight:700;color:var(--text);margin-bottom:6px}
+.welcome-card-desc{font-size:12px;color:var(--text-2);margin-bottom:18px;line-height:1.6}
+.welcome-privacy{font-size:11px;color:var(--text-3);line-height:1.7;max-width:420px;margin:0 auto}
 </style>
 </head>
 <body>
@@ -273,6 +285,7 @@ textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);
 <div id="screen-dashboard" class="screen">
   <div id="next-action-banner" style="display:none"></div>
   <div id="wins-wrap" style="display:none"></div>
+  <div id="sample-notice-dashboard" style="display:none;font-size:11px;color:var(--text-3);font-style:italic;margin-bottom:8px;text-align:center">Showing sample data</div>
   <div class="stat-grid" id="stat-grid"></div>
   <div class="sec">Deadlines this week</div>
   <div class="week-grid" id="week-grid"></div>
@@ -291,6 +304,7 @@ textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);
 <!-- TODAY -->
 <div id="screen-today" class="screen">
   <div class="today-hero" id="today-hero"></div>
+  <div id="sample-notice-today" style="display:none;font-size:11px;color:var(--text-3);font-style:italic;margin-bottom:4px;text-align:center">Showing sample data</div>
 
   <div class="today-section">
     <div class="sec" style="margin-bottom:3px">Today's focus</div>
@@ -520,6 +534,22 @@ textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);
 
 <!-- PREFS -->
 <div id="screen-prefs" class="screen">
+  <div class="card" id="apikey-card">
+    <div class="sec" style="margin-bottom:10px">Claude API Key</div>
+    <p style="font-size:12px;color:var(--text-3);margin-bottom:14px;line-height:1.6">Your API key is used only to generate your plans. It is sent to our server only during planning requests and is never stored there.</p>
+    <div id="apikey-saved-state" style="display:none">
+      <div style="font-size:13px;color:var(--green);margin-bottom:10px;font-weight:600">✓ API key saved</div>
+      <button class="btn btn-sm btn-danger" onclick="clearApiKey()">Clear key</button>
+    </div>
+    <div id="apikey-entry-state">
+      <input type="password" id="apikey-input" placeholder="sk-ant-api03-..." style="margin-bottom:8px">
+      <label style="font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:6px;margin-bottom:12px;cursor:pointer">
+        <input type="checkbox" id="apikey-remember" style="width:auto"> Remember this key on this browser
+      </label>
+      <button class="btn btn-primary btn-sm" onclick="saveApiKey()">Save key</button>
+      <div id="apikey-msg" style="display:none" class="ok"></div>
+    </div>
+  </div>
   <div class="card">
     <div class="sec" style="margin-bottom:10px">Scheduling Preferences</div>
     <p class="prefs-hint">
@@ -551,9 +581,36 @@ textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);
     <div style="font-size:11px;color:var(--text-3);margin-top:16px">These changes only affect data stored in this browser.</div>
     <div id="clear-msg" style="display:none" class="ok"></div>
   </div>
+  <div class="card">
+    <div class="sec" style="margin-bottom:10px">App Mode</div>
+    <div id="mode-current-label" style="font-size:13px;color:var(--text-2);margin-bottom:12px"></div>
+    <button class="btn btn-sm" onclick="promptSwitchMode()">Switch mode</button>
+  </div>
 </div>
 
 </div>
+
+<!-- WELCOME OVERLAY -->
+<div id="welcome-overlay" class="welcome-overlay" style="display:none">
+  <div class="welcome-box">
+    <div class="welcome-title">Welcome to Next Block</div>
+    <div class="welcome-sub">A clear plan for your next block of time.</div>
+    <div class="welcome-cards">
+      <div class="welcome-card" onclick="selectMode('sample')">
+        <div class="welcome-card-title">Try a sample plan</div>
+        <div class="welcome-card-desc">See how Next Block works with example tasks — no API key needed.</div>
+        <button class="btn btn-primary btn-sm" style="width:100%">Try sample plan</button>
+      </div>
+      <div class="welcome-card" onclick="selectMode('personalized')">
+        <div class="welcome-card-title">Use my own plan</div>
+        <div class="welcome-card-desc">Add your own tasks and use your Claude API key for personalized planning.</div>
+        <button class="btn btn-sm" style="width:100%">Use my own plan</button>
+      </div>
+    </div>
+    <div class="welcome-privacy">Your tasks and preferences stay in this browser. Your API key is sent only when generating a plan and is never stored on our servers.</div>
+  </div>
+</div>
+
 <div id="toast" class="hidden"></div>
 
 <script>
@@ -606,6 +663,99 @@ function normalizeLog(s){
 }
 function loadLog(){return(lsGet('sched_log')||[]).map(normalizeLog);}
 function appendLog(e){const l=lsGet('sched_log')||[];l.push(e);saveLog(l);}
+
+// ── app mode ─────────────────────────────────────────────────
+function getAppMode(){return localStorage.getItem('nextblock_mode');}
+function setAppMode(mode){localStorage.setItem('nextblock_mode',mode);}
+function isSampleMode(){return getAppMode()==='sample';}
+function isPersonalizedMode(){return getAppMode()==='personalized';}
+
+// ── api key ──────────────────────────────────────────────────
+function getUserApiKey(){
+  return sessionStorage.getItem('nextblock_anthropic_api_key_session')
+    ||localStorage.getItem('nextblock_anthropic_api_key')||null;
+}
+function saveUserApiKey(key,remember){
+  sessionStorage.setItem('nextblock_anthropic_api_key_session',key);
+  if(remember)localStorage.setItem('nextblock_anthropic_api_key',key);
+  else localStorage.removeItem('nextblock_anthropic_api_key');
+}
+function clearUserApiKey(){
+  sessionStorage.removeItem('nextblock_anthropic_api_key_session');
+  localStorage.removeItem('nextblock_anthropic_api_key');
+}
+function hasUserApiKey(){return!!getUserApiKey();}
+
+// ── sample data ───────────────────────────────────────────────
+function getSampleTasks(){
+  const now=new Date();
+  const todayStr=now.toISOString().slice(0,10);
+  const todayISO=now.toISOString();
+  const ago7=new Date(now);ago7.setDate(now.getDate()-7);
+  const createdAt=ago7.toISOString();
+  function d(n){const x=new Date(now);x.setDate(now.getDate()+n);return x.toISOString().slice(0,10);}
+  return[
+    {id:'s1',title:'Reply to school about permission slip',area:'kid',priority:'high',energy:'errand',deadline:todayStr,estimatedMinutes:10,status:'open',createdAt,deferredUntil:null},
+    {id:'s2',title:'Finish Q2 budget presentation',area:'work',priority:'high',energy:'deep',deadline:todayStr,estimatedMinutes:60,status:'open',createdAt,deferredUntil:null},
+    {id:'s3',title:'Pay overdue credit card bill',area:'home',priority:'high',energy:'errand',deadline:d(-1),estimatedMinutes:10,status:'open',createdAt,deferredUntil:null},
+    {id:'s4',title:'Book dentist appointment for kids',area:'kid',priority:'med',energy:'errand',deadline:d(3),estimatedMinutes:15,status:'open',createdAt,deferredUntil:null},
+    {id:'s5',title:'Review Q1 performance report',area:'work',priority:'med',energy:'deep',deadline:d(5),estimatedMinutes:45,status:'open',createdAt,deferredUntil:null},
+    {id:'s6',title:"Prep tomorrow's school bag",area:'kid',priority:'med',energy:'light',deadline:d(1),estimatedMinutes:15,status:'open',createdAt,deferredUntil:null},
+    {id:'s7',title:'Draft weekly team update',area:'work',priority:'med',energy:'light',deadline:null,estimatedMinutes:20,status:'open',createdAt,deferredUntil:null},
+    {id:'s8',title:'Quick kitchen tidy',area:'home',priority:'low',energy:'light',deadline:null,estimatedMinutes:20,status:'open',createdAt,deferredUntil:null},
+    {id:'s9',title:'30-minute walk',area:'self',priority:'med',energy:'light',deadline:null,estimatedMinutes:30,status:'open',createdAt,deferredUntil:null},
+    {id:'s10',title:"Order birthday gift for Olivia",area:'kid',priority:'high',energy:'errand',deadline:d(4),estimatedMinutes:15,status:'open',createdAt,deferredUntil:null},
+    {id:'s11',title:'Morning journal',area:'self',priority:'low',energy:'light',deadline:null,estimatedMinutes:15,status:'done',createdAt,completedAt:todayISO,deferredUntil:null},
+    {id:'s12',title:'Called pediatrician — confirmed appointment',area:'kid',priority:'high',energy:'errand',deadline:null,estimatedMinutes:10,status:'done',createdAt,completedAt:todayISO,deferredUntil:null},
+  ];
+}
+
+function getSampleSessionLogs(){
+  const now=new Date();
+  const todayStr=now.toISOString().slice(0,10);
+  const yst=new Date(now);yst.setDate(now.getDate()-1);
+  const ystStr=yst.toISOString().slice(0,10);
+  return[
+    {ts:yst.getTime(),date:ystStr,timeOfDay:'afternoon',mood:'default',minutesPlanned:60,minutesCompleted:35,slotMinutes:60,
+     completedIds:['s7','s8'],skippedIds:['s9'],
+     tasks:[{taskId:'s7',result:'done'},{taskId:'s8',result:'done'},{taskId:'s9',result:'skipped'}]},
+    {ts:now.getTime()-7200000,date:todayStr,timeOfDay:'morning',mood:'default',minutesPlanned:30,minutesCompleted:25,slotMinutes:30,
+     completedIds:['s11','s12'],skippedIds:[],
+     tasks:[{taskId:'s11',result:'done'},{taskId:'s12',result:'done'}]},
+  ];
+}
+
+function getActiveTasks(){return isSampleMode()?getSampleTasks():loadTasks();}
+function getActiveSessionLogs(){return isSampleMode()?getSampleSessionLogs():loadLog();}
+
+function generateSamplePlan({minutes,mood,timeOfDay}){
+  const openTasks=getSampleTasks().filter(t=>t.status==='open');
+  const moodOrder={
+    focused:['deep','light','errand'],
+    'low-energy':['errand','light','deep'],
+    'hard-to-focus':['errand','light','deep'],
+    default:['errand','light','deep']
+  };
+  const order=moodOrder[mood]||moodOrder.default;
+  const sorted=[...openTasks].sort((a,b)=>{
+    const ai=order.indexOf(a.energy);const bi=order.indexOf(b.energy);
+    return(ai===-1?99:ai)-(bi===-1?99:bi);
+  });
+  const REASONS={
+    deep:{focused:'Deep focus task — good energy for this now',default:'Good time to make meaningful progress'},
+    light:{'low-energy':'Low effort — manageable right now','hard-to-focus':'Clear scope, easy to start',focused:'Keeps momentum while focused',default:'Keeps you moving without heavy thinking'},
+    errand:{'low-energy':'Short and concrete — ideal for low energy','hard-to-focus':'Very short and clearly bounded',focused:'Quick win to stay in flow',default:'Quick and practical'}
+  };
+  let total=0;const picked=[];
+  for(const t of sorted){
+    if(total+t.estimatedMinutes<=minutes){
+      picked.push({...t,reason:(REASONS[t.energy]?.[mood]||REASONS[t.energy]?.default||'Good fit for this block'),estimatedMin:t.estimatedMinutes,ss:'open'});
+      total+=t.estimatedMinutes;
+    }
+    if(picked.length>=6)break;
+  }
+  return picked;
+}
 
 // ── defer / reschedule ────────────────────────────────────────
 function isDeferred(t){return !!(t.deferredUntil&&new Date(t.deferredUntil)>new Date());}
@@ -660,7 +810,7 @@ function navGoTo(name){
 }
 
 function updateNavBadge(){
-  const urgent=loadTasks().filter(t=>t.status==='open'&&t.deadline&&daysAway(t.deadline)<=0).length;
+  const urgent=getActiveTasks().filter(t=>t.status==='open'&&t.deadline&&daysAway(t.deadline)<=0).length;
   const badge=document.getElementById('nav-urgent-badge');
   badge.style.display=urgent?'inline-block':'none';
   if(urgent)badge.textContent=urgent;
@@ -927,8 +1077,8 @@ function renderRecentSessionSection(tasks,logs){
 }
 
 function renderToday(){
-  const tasks=loadTasks();
-  const logs=loadLog();
+  const tasks=getActiveTasks();
+  const logs=getActiveSessionLogs();
   const open=tasks.filter(t=>t.status==='open');
   const atRisk=getAtRiskTasks(tasks);
   const completedToday=getCompletedToday(tasks,logs);
@@ -937,15 +1087,17 @@ function renderToday(){
   renderAtRiskSection(atRisk);
   renderCompletedTodaySection(completedToday);
   renderRecentSessionSection(tasks,logs);
+  const snToday=document.getElementById('sample-notice-today');
+  if(snToday)snToday.style.display=isSampleMode()?'block':'none';
 }
 
 // ── next-action banner (dashboard) ───────────────────────────
 function renderNextAction(){
-  const tasks=loadTasks();
+  const tasks=getActiveTasks();
   const open=tasks.filter(t=>t.status==='open');
   const overdue=open.filter(t=>t.deadline&&daysAway(t.deadline)<0);
   const dueToday=open.filter(t=>t.deadline&&daysAway(t.deadline)===0);
-  const todayWins=loadLog().filter(s=>s.date===tod()).flatMap(s=>s.completedIds||[]).map(id=>tasks.find(t=>t.id===id)).filter(Boolean);
+  const todayWins=getActiveSessionLogs().filter(s=>s.date===tod()).flatMap(s=>s.completedIds||[]).map(id=>tasks.find(t=>t.id===id)).filter(Boolean);
   const el=document.getElementById('next-action-banner');
 
   if(!open.length){
@@ -977,8 +1129,13 @@ function autoSetTimeOfDay(){
 }
 
 function updatePlanContext(){
-  const count=loadTasks().filter(t=>t.status==='open').length;
   const el=document.getElementById('plan-context');
+  if(isSampleMode()){
+    el.textContent='Sample mode — using example tasks. Switch to personalized mode to plan from your own tasks.';
+    el.style.color='#94a3b8';
+    return;
+  }
+  const count=loadTasks().filter(t=>t.status==='open').length;
   el.textContent=count?`${count} open task${count!==1?'s':''} available to plan from.`:'No open tasks — add some before planning.';
   el.style.color=count?'#94a3b8':'#ef4444';
 }
@@ -1087,7 +1244,7 @@ function editRowHtml(t){
 
 // ── dashboard ────────────────────────────────────────────────
 function renderDashboard(){
-  const tasks=loadTasks(),open=tasks.filter(t=>t.status==='open');
+  const tasks=getActiveTasks(),open=tasks.filter(t=>t.status==='open');
   renderNextAction();
   updateNavBadge();
   const activeTile=document.getElementById('filter-area')?.value||'';
@@ -1100,7 +1257,7 @@ function renderDashboard(){
       `${areaLabel(a)}</div>` +
       `<div class="stat-val" style="color:${AREA_FG[a]}">${open.filter(t=>t.area===a).length}</div></div>`;
   }).join('');
-  const log=loadLog();
+  const log=getActiveSessionLogs();
   const wins=log.filter(s=>isTodayLocal(s.ts)).flatMap(s=>s.completedIds||[]).map(id=>tasks.find(t=>t.id===id)).filter(Boolean);
   const ww=document.getElementById('wins-wrap');
   if(wins.length){ww.style.display='block';ww.innerHTML=`<div class="wins-card"><div style="font-size:12px;font-weight:700;color:#065f46;margin-bottom:8px">Completed today (${wins.length})</div>${wins.map(t=>`<div style="font-size:12px;color:#065f46;padding:2px 0">✓ ${t.title}</div>`).join('')}</div>`;}
@@ -1127,6 +1284,8 @@ function renderDashboard(){
   document.getElementById('task-list').innerHTML=filtered.length
     ?filtered.map(taskRowHtml).join('')
     :'<div class="empty">No open tasks.</div>';
+  const snDash=document.getElementById('sample-notice-dashboard');
+  if(snDash)snDash.style.display=isSampleMode()?'block':'none';
 }
 
 function deleteTask(id){
@@ -1272,43 +1431,60 @@ function renderParseBuf(){
 async function parseNotes(){
   const raw=document.getElementById('raw-notes').value.trim();
   if(!raw){showEl('parse-err','Please enter some notes first.',true);return;}
+  if(!hasUserApiKey()){
+    showEl('parse-err',
+      isSampleMode()
+        ?'AI task parsing requires a Claude API key. Add your key in Preferences, or switch to personalized mode.'
+        :'Add your Claude API key in Preferences to parse tasks.',
+      true);
+    return;
+  }
   const btn=document.getElementById('parse-btn');
-  btn.disabled=true;btn.textContent='Parsing...';
+  btn.disabled=true;
   showEl('parse-err','',false);
+
+  // pre-process ALL raw lines before any API call
+  const allSourceLines=raw.split(/\r?\n/).map((l,i)=>({
+    sourceId:'line_'+i,
+    sourceText:l.trim(),
+    explicitEstimatedMinutes:extractEstimatedMinutesFromText(l.trim())
+  })).filter(sl=>sl.sourceText);
+  if(DEBUG_PARSE)console.log('[parse] sourceLines',allSourceLines);
+
+  // build lookup maps from the full set so they survive chunking
+  const explicitBySourceId={};
+  const explicitByKey={};
+  allSourceLines.forEach(sl=>{
+    if(sl.explicitEstimatedMinutes!==null){
+      explicitBySourceId[sl.sourceId]=sl.explicitEstimatedMinutes;
+      const key=computeNormalizedKey(sl.sourceText);
+      if(key)explicitByKey[key]=sl.explicitEstimatedMinutes;
+    }
+  });
+
+  // split into chunks of 15 lines so each request stays well within token limits
+  const CHUNK=15;
+  const chunks=[];
+  for(let i=0;i<allSourceLines.length;i+=CHUNK)chunks.push(allSourceLines.slice(i,i+CHUNK));
+
   try{
-    // pre-process raw lines BEFORE calling API — extract explicit times deterministically
-    const sourceLines=raw.split(/\r?\n/).map((l,i)=>({
-      sourceId:'line_'+i,
-      sourceText:l.trim(),
-      explicitEstimatedMinutes:extractEstimatedMinutesFromText(l.trim())
-    })).filter(sl=>sl.sourceText);
-    if(DEBUG_PARSE)console.log('[parse] sourceLines',sourceLines);
-
-    const res=await fetch('/api/parse',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({notes:raw,sourceLines})
-    });
-    const data=await res.json();
-    if(!res.ok)throw new Error(data.error||'Server error');
-    if(DEBUG_PARSE)console.log('[parse] raw response',data);
-
-    // build lookups: sourceId → explicit minutes, normalizedKey → explicit minutes
-    const explicitBySourceId={};
-    const explicitByKey={};
-    sourceLines.forEach(sl=>{
-      if(sl.explicitEstimatedMinutes!==null){
-        explicitBySourceId[sl.sourceId]=sl.explicitEstimatedMinutes;
-        const key=computeNormalizedKey(sl.sourceText);
-        if(key)explicitByKey[key]=sl.explicitEstimatedMinutes;
-      }
-    });
-    if(DEBUG_PARSE)console.log('[parse] explicitBySourceId',explicitBySourceId);
-    if(DEBUG_PARSE)console.log('[parse] explicitByKey',explicitByKey);
-
-    const rawTasks=Array.isArray(data)?data:(data.tasks||[]);
-    if(!rawTasks.length)throw new Error('No tasks found in your notes');
-    parsedBuf=rawTasks.map(t=>normalizeParsedTaskEstimate(t,explicitBySourceId,explicitByKey));
+    let allRawTasks=[];
+    for(let i=0;i<chunks.length;i++){
+      btn.textContent=chunks.length>1?`Parsing (${i+1}/${chunks.length})...`:'Parsing...';
+      const chunk=chunks[i];
+      const res=await fetch('/api/parse',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-anthropic-api-key':getUserApiKey()},
+        body:JSON.stringify({notes:chunk.map(sl=>sl.sourceText).join('\n'),sourceLines:chunk})
+      });
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||'Server error');
+      if(DEBUG_PARSE)console.log(`[parse] chunk ${i+1} response`,data);
+      const rawTasks=Array.isArray(data)?data:(data.tasks||[]);
+      allRawTasks=allRawTasks.concat(rawTasks);
+    }
+    if(!allRawTasks.length)throw new Error('No tasks found in your notes');
+    parsedBuf=allRawTasks.map(t=>normalizeParsedTaskEstimate(t,explicitBySourceId,explicitByKey));
     if(DEBUG_PARSE)console.log('[parse] parsedBuf',parsedBuf.map(t=>({title:t.title,estimatedMinutes:t.estimatedMinutes,estimateSource:t.estimateSource,sourceId:t.sourceId})));
     renderParseBuf();
   }catch(e){showEl('parse-err',e.message,true);}
@@ -1382,11 +1558,44 @@ function buildWhyPlanLines(minutes,mood,plannedTasks,preferences,realtimeInput,l
   return lines;
 }
 
-// ── generate plan via backend API ────────────────────────────
+// ── generate plan ────────────────────────────────────────────
 async function generatePlan(){
   const minutes=parseInt(document.getElementById('slot-min').value)||90;
   const timeOfDay=document.getElementById('slot-tod').value;
   const mood=document.querySelector('#mood-row .mood-btn.sel')?.dataset.val||'default';
+
+  // ── sample mode ──────────────────────────────────────────────
+  if(isSampleMode()){
+    showEl('plan-err','',false);
+    sessionDeferred=[];sessionAdjusted=false;sessionAdjustmentTs=null;sessionAdjustmentReason=null;
+    sessionOriginalMinutes=null;sessionAdjustedMinutes=null;sessionBlockMinutes=null;
+    document.getElementById('adjusted-badge').style.display='none';
+    document.getElementById('why-plan-card').style.display='none';
+    document.getElementById('block-time-label').style.display='none';
+    sessionBlockStart=null;sessionBlockEnd=null;
+    const plan=generateSamplePlan({minutes,mood,timeOfDay});
+    if(!plan.length){showEl('plan-err','No sample tasks fit in this block. Try a longer time.',true);return;}
+    sessionPlan=plan;sessionBlockMinutes=minutes;
+    sessionBlockStart=new Date().toISOString();
+    sessionBlockEnd=new Date(Date.now()+minutes*60000).toISOString();
+    const btl=document.getElementById('block-time-label');
+    btl.textContent='Block: '+fmtTime(sessionBlockStart)+' – '+fmtTime(sessionBlockEnd);
+    btl.style.display='block';
+    document.getElementById('adjust-btn').style.display='none';
+    document.getElementById('session-wrap').style.display='block';
+    renderSessionTasks();
+    const whyCard=document.getElementById('why-plan-card');
+    whyCard.innerHTML=`<div class="why-plan-title">Sample plan</div><div class="why-plan-line" style="margin-top:6px">This is an example plan. <button class="btn btn-sm" style="font-size:11px;padding:3px 10px;display:inline-block;width:auto;margin-left:4px" onclick="navGoTo('prefs')">Add your API key</button> to generate a personalized plan from your own tasks.</div>`;
+    whyCard.style.display='block';
+    document.getElementById('session-wrap').scrollIntoView({behavior:'smooth',block:'start'});
+    return;
+  }
+
+  // ── personalized mode ────────────────────────────────────────
+  if(!hasUserApiKey()){
+    showEl('plan-err','Add your Claude API key in Preferences to generate a personalized plan.',true);
+    return;
+  }
   const tasks=loadTasks().filter(t=>t.status==='open'&&!isDeferred(t));
   if(!tasks.length){showEl('plan-err','No open tasks available — some may be deferred.',true);return;}
   showEl('plan-err','',false);
@@ -1402,10 +1611,11 @@ async function generatePlan(){
   const logs=loadLog().slice(-15);
   const btn=document.getElementById('gen-plan-btn');
   btn.disabled=true;btn.textContent='Planning...';
+  document.getElementById('adjust-btn').style.display='';
   try{
     const res=await fetch('/api/plan',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','x-anthropic-api-key':getUserApiKey()},
       body:JSON.stringify({tasks,preferences,minutes,timeOfDay,mood,sessionLogs:logs,realtimeInput})
     });
     const data=await res.json();
@@ -1530,12 +1740,12 @@ function finishSession(){
     })
   ];
 
-  if(doneIds.length>0){
+  if(doneIds.length>0&&!isSampleMode()){
     const completedAt=new Date().toISOString();
     saveTasks(loadTasks().map(t=>doneIds.includes(t.id)?{...t,status:'done',completedAt}:t));
   }
 
-  appendLog({
+  if(!isSampleMode())appendLog({
     ts:Date.now(),date:tod(),timeOfDay,mood,
     blockStartTime:sessionBlockStart||undefined,
     blockEndTime:sessionBlockEnd||undefined,
@@ -1673,7 +1883,7 @@ async function adjustCurrentPlan(){
   try{
     const res=await fetch('/api/plan',{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json','x-anthropic-api-key':getUserApiKey()||''},
       body:JSON.stringify({
         tasks:eligible,preferences,minutes,timeOfDay,mood,
         sessionLogs:loadLog().slice(-15),
@@ -1796,6 +2006,11 @@ function saveInstructions(){
 
 function renderPrefs(){
   document.getElementById('prefs-inst').value=loadPrefs().instructions||'';
+  const hasSaved=hasUserApiKey();
+  document.getElementById('apikey-saved-state').style.display=hasSaved?'block':'none';
+  document.getElementById('apikey-entry-state').style.display=hasSaved?'none':'block';
+  const modeEl=document.getElementById('mode-current-label');
+  if(modeEl)modeEl.textContent=isSampleMode()?'Currently using sample mode — example tasks, no API key needed.':'Currently using personalized mode — your tasks and Claude API key.';
 }
 
 // ── dev test helpers ─────────────────────────────────────────
@@ -1819,6 +2034,39 @@ window.testEstimateExtraction=function(){
   console.log(allPass?'ALL PASS':'FAILED — see above');
   return allPass;
 };
+
+// ── mode selection ────────────────────────────────────────────
+function selectMode(mode){
+  setAppMode(mode);
+  document.getElementById('welcome-overlay').style.display='none';
+  renderDashboard();
+  if(mode==='personalized'&&!hasUserApiKey())navGoTo('prefs');
+}
+
+function promptSwitchMode(){
+  document.getElementById('welcome-overlay').style.display='flex';
+}
+
+// ── api key management ────────────────────────────────────────
+function saveApiKey(){
+  const key=(document.getElementById('apikey-input').value||'').trim();
+  if(!key){
+    const msg=document.getElementById('apikey-msg');
+    msg.textContent='Please enter your API key.';msg.className='err';msg.style.display='block';
+    return;
+  }
+  const remember=document.getElementById('apikey-remember').checked;
+  saveUserApiKey(key,remember);
+  document.getElementById('apikey-input').value='';
+  showEl('apikey-msg','API key saved.',false);
+  setTimeout(()=>{showEl('apikey-msg','',false);renderPrefs();},1500);
+}
+
+function clearApiKey(){
+  if(!confirm('Remove saved API key from this browser?'))return;
+  clearUserApiKey();
+  renderPrefs();
+}
 
 // ── wire up buttons ──────────────────────────────────────────
 document.getElementById('parse-btn').addEventListener('click',parseNotes);
@@ -1859,6 +2107,7 @@ document.querySelectorAll('#mood-row .mood-btn').forEach(btn=>btn.addEventListen
 
 // ── init ─────────────────────────────────────────────────────
 renderDashboard();
+document.getElementById('welcome-overlay').style.display='flex';
 </script>
 </body>
 </html>
