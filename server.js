@@ -385,3 +385,16 @@ Open tasks: ${JSON.stringify(tasks.map(t => ({
 // ── start ────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Scheduler running at http://localhost:${PORT}`));
+
+
+app.listen(PORT, () => {
+  console.log(`Next Block server running on port ${PORT}`);
+});
+
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    app: "Next Block",
+    timestamp: new Date().toISOString()
+  });
+});
