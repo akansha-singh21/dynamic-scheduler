@@ -440,7 +440,7 @@ textarea:focus,input:focus,select:focus{outline:none;border-color:var(--accent);
     <div style="margin-bottom:16px">
       <div class="field-label">Anything on your mind right now? <span class="field-opt">(optional)</span></div>
       <textarea id="realtime-input" rows="2"
-        placeholder="e.g. Want to only tackle work related tasks. Need to make a call at 2pm."
+        placeholder="e.g. Want to only tackle work related tasks. Need to make a call in 30 mins."
         style="font-size:12px;resize:none"></textarea>
     </div>
     <div class="how-plan">
@@ -697,26 +697,26 @@ function getSampleTasks(){
   function deferUntil(n){const x=new Date(now);x.setDate(now.getDate()+n);x.setHours(9,0,0,0);return x.toISOString();}
   return[
     // ── Completed today ───────────────────────────────────────
-    {id:'s1', title:'Morning journal',                          area:'self', priority:'low', energy:'light',  deadline:null,       estimatedMinutes:15, status:'done', createdAt, completedAt:todayISO, deferredUntil:null},
+    {id:'s1', title:'Sent weekly standup notes to team',                          area:'work', priority:'med', energy:'light',  deadline:null,       estimatedMinutes:15, status:'done', createdAt, completedAt:todayISO, deferredUntil:null},
     {id:'s2', title:'Replied to daycare re: Friday pickup change',        area:'kid',  priority:'high',energy:'errand', deadline:null,       estimatedMinutes:10, status:'done', createdAt, completedAt:todayISO, deferredUntil:null},
     {id:'s3', title:'Completed laundry',                       area:'home', priority:'med', energy:'errand', deadline:null,       estimatedMinutes:10, status:'done', createdAt, completedAt:todayISO, deferredUntil:null},
-    {id:'s4', title:'Sent weekly standup notes to team',                  area:'work', priority:'med', energy:'errand', deadline:null,       estimatedMinutes:10, status:'done', createdAt, completedAt:todayISO, deferredUntil:null},
+    {id:'s4', title:'Morning journal',                  area:'self', priority:'low', energy:'errand', deadline:null,       estimatedMinutes:10, status:'done', createdAt, completedAt:todayISO, deferredUntil:null},
     // ── Deferred ──────────────────────────────────────────────
     {id:'s5', title:"Order kids' rain boots",              area:'kid',  priority:'low', energy:'errand', deadline:null,       estimatedMinutes:15, status:'open', createdAt, deferredUntil:deferUntil(3)},
     {id:'s6', title:'Deep clean the fridge',                              area:'home', priority:'low', energy:'light',  deadline:null,       estimatedMinutes:40, status:'open', createdAt, deferredUntil:deferUntil(1)},
     // ── Overdue ───────────────────────────────────────────────
     {id:'s7', title:'Submit April travel expense report',                 area:'work', priority:'high',energy:'errand', deadline:d(-1),      estimatedMinutes:20, status:'open', createdAt, deferredUntil:null},
     // ── Due today ─────────────────────────────────────────────
-    {id:'s8', title:'Sign permission slip for school trip',               area:'kid',  priority:'high',energy:'errand', deadline:todayStr,   estimatedMinutes:5,  status:'open', createdAt, deferredUntil:null},
+    {id:'s8',title:'Review home insurance renewal',    area:'home', priority:'high',energy:'deep',   deadline:d(7),       estimatedMinutes:45, status:'open', createdAt, deferredUntil:null},
     {id:'s9', title:'Finish Q2 planning deck',       area:'work', priority:'high',energy:'deep',   deadline:todayStr,   estimatedMinutes:75, status:'open', createdAt, deferredUntil:null},
     // ── Due this week ─────────────────────────────────────────
     {id:'s10',title:'Plan weekend outing',               area:'kid',  priority:'med', energy:'light',  deadline:d(1),       estimatedMinutes:20, status:'open', createdAt, deferredUntil:null},
-    {id:'s11',title:'Book pediatrician 18-month checkup',                 area:'kid',  priority:'med', energy:'errand', deadline:d(2),       estimatedMinutes:15, status:'open', createdAt, deferredUntil:null},
+    {id:'s11',title:'Book pediatrician checkup',                 area:'kid',  priority:'med', energy:'errand', deadline:d(2),       estimatedMinutes:15, status:'open', createdAt, deferredUntil:null},
     {id:'s12',title:'Pay outstanding household credit card',              area:'home', priority:'high',energy:'errand', deadline:d(2),       estimatedMinutes:10, status:'open', createdAt, deferredUntil:null},
     {id:'s13',title:'Read Q2 industry analyst report',                    area:'work', priority:'med', energy:'deep',   deadline:d(3),       estimatedMinutes:45, status:'open', createdAt, deferredUntil:null},
     {id:'s14',title:'Write interview feedback for two candidates',        area:'work', priority:'high',energy:'light',  deadline:d(4),       estimatedMinutes:30, status:'open', createdAt, deferredUntil:null},
     {id:'s15',title:"Order birthday gift",      area:'kid',  priority:'high',energy:'errand', deadline:d(5),       estimatedMinutes:20, status:'open', createdAt, deferredUntil:null},
-    {id:'s16',title:'Review home insurance renewal',    area:'home', priority:'high',energy:'deep',   deadline:d(7),       estimatedMinutes:45, status:'open', createdAt, deferredUntil:null},
+    {id:'s16', title:'Sign permission slip for school trip',               area:'kid',  priority:'high',energy:'errand', deadline:todayStr,   estimatedMinutes:5,  status:'open', createdAt, deferredUntil:null},
     {id:'s17',title:'Register for product leadership conference',         area:'work', priority:'med', energy:'errand', deadline:d(7),       estimatedMinutes:10, status:'open', createdAt, deferredUntil:null},
     // ── Open — Work ───────────────────────────────────────────
     {id:'s18',title:'Review product strategy memo',         area:'work', priority:'high',energy:'deep',   deadline:null,       estimatedMinutes:60, status:'open', createdAt, deferredUntil:null},
