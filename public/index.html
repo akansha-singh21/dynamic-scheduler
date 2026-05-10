@@ -1540,7 +1540,7 @@ async function parseNotes(){
     if(DEBUG_PARSE)console.log('[parse] parsedBuf',parsedBuf.map(t=>({title:t.title,estimatedMinutes:t.estimatedMinutes,estimateSource:t.estimateSource,sourceId:t.sourceId})));
     renderParseBuf();
   }catch(e){showEl('parse-err',e.message,true);}
-  btn.disabled=false;btn.textContent='Parse with AI';
+  btn.disabled=false;btn.textContent='Organize tasks';
 }
 
 function updateParsedEstMin(i,val){
